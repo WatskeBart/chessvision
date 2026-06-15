@@ -1,0 +1,10 @@
+[project]
+name = "chessvision"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "onnxruntime>=1.26.0",
+    "opencv-python>=4.13.0.92",
+    "python-chess>=1.999",
+    "ultralytics>=8.4.67",
+]
