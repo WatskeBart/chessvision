@@ -9,12 +9,17 @@ stream_url = "http://10.42.0.177:4444/stream"
 # types x {white, black}). yolo26n.pt is only the COCO-pretrained base
 # checkpoint and will NOT recognize pieces correctly until fine-tuned -
 # see main.py / README for training notes.
-MODEL_PATH = "yolo26n.pt"
-
+#MODEL_PATH = "yolo26n.pt"
+MODEL_PATH = "runs/detect/train-2/weights/best.pt"
 # If the warped board's top-left corner corresponds to square a8 from the
 # camera's point of view, leave this False. Flip to True if your camera/
 # board orientation puts a1 in the top-left instead.
 FLIP_ORIENTATION = False
+
+# The warped board is only as big as the board appears in the raw camera
+# frame, which can be quite small. Scale the displayed view up to at least
+# this many pixels on a side so detected pieces/boxes are easy to see.
+DISPLAY_SIZE = 800
 
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
@@ -110,6 +115,17 @@ def detections_to_board(result, board_w, board_h):
     return board
 
 
+def scale_for_display(image, target_size):
+    """Upscale (never downscale) a square-ish image so it's easy to view,
+    preserving aspect ratio."""
+    h, w = image.shape[:2]
+    scale = target_size / max(h, w)
+    if scale <= 1:
+        return image
+    new_w, new_h = int(w * scale), int(h * scale)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+
 def main():
     model = YOLO(MODEL_PATH)
     cap = cv2.VideoCapture(stream_url)
@@ -134,7 +150,7 @@ def main():
                 occupied = ", ".join(f"{sq}:{label}" for sq, (label, _) in sorted(board.items()))
                 print(occupied)
 
-        cv2.imshow("Chess piece detection", view)
+        cv2.imshow("Chess piece detection", scale_for_display(view, DISPLAY_SIZE))
         if cv2.waitKey(1) & 0xFF == 27:  # Press ESC to exit
             break
 
