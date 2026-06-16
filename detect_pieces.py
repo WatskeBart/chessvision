@@ -23,14 +23,14 @@ DISPLAY_SIZE = 800
 
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
-
+#RANKS = "12345678"  # rank 1 first, matches a top-left = a1 orientation
 
 def find_board_corners(frame):
     """Locate the board's outer quadrilateral in the raw camera frame."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    threshold_kernel_size = blurred.shape[0] // 8 * 2 + 1
+    threshold_kernel_size = blurred.shape[0] // 32 * 2 + 1
     thresh = cv2.adaptiveThreshold(
         blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, threshold_kernel_size, 3
     )
@@ -143,7 +143,7 @@ def main():
             view = warped
 
             results = model(warped, verbose=False)[0]
-            view = results.plot()
+            view = results.plot(font_size=4, line_width=1)
 
             board = detections_to_board(results, warped.shape[1], warped.shape[0])
             if board:
