@@ -1,6 +1,8 @@
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 import math
+import os
 
 # Replace with your stream URL
 stream_url = "http://10.42.0.177:4444/stream"
@@ -15,7 +17,8 @@ while True:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blurred_a = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    threshold_kernel_size = blurred_a.shape[0] // 8 * 2 + 1
+ 
+    threshold_kernel_size = blurred_a.shape[0] // 32 * 2 + 1
     thresh = cv2.adaptiveThreshold(
         blurred_a, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, threshold_kernel_size, 3
     )
@@ -26,20 +29,45 @@ while True:
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
     edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
+    cv2.imshow('Contours Stream', contours_preview)
 
     contours, _ = cv2.findContours(
         edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
+
+    contours_preview = frame.copy()
+    cv2.drawContours(contours_preview, contours, -1, (0, 255, 0), 2)
+    cv2.imshow('Contours Stream', contours_preview)
+
     # largest quadrilateral
     board = None
     for cnt in sorted(contours, key=cv2.contourArea, reverse=True):
         peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
 
         if len(approx) == 4:
+
             board = approx.reshape(4, 2)
+
+            tl = board[np.argmin(board.sum(axis=1))]
+            br = board[np.argmax(board.sum(axis=1))]
+            tr = board[np.argmin(np.diff(board, axis=1))]
+            bl = board[np.argmax(np.diff(board, axis=1))]
+
+
+            # # Add margin to the bounding box
+            # margin = 10  # Adjust this value as needed
+            # tl = (tl[0] - margin, tl[1] - margin)
+            # br = (br[0] + margin, br[1] + margin)
+            # tr = (tr[0] + margin, tr[1] - margin)
+            # bl = (bl[0] - margin, bl[1] + margin)
+
+            board = np.array([tl, tr, br, bl], dtype=np.int32)
             break
+
+    cv2.drawContours(frame, [board], -1, (0, 255, 0), 2)
+
 
     if board is not None:
         # Order points in clockwise order
@@ -71,7 +99,8 @@ while True:
         M = cv2.getPerspectiveTransform(rect, dst)
         warped_a = cv2.warpPerspective(frame, M, (max_width, max_height))
 
-    cv2.imshow('MJPEG Stream', warped_a if board is not None else frame)
+
+    cv2.imshow('MJPEG Stream', frame)
     if cv2.waitKey(1) & 0xFF == 27:  # Press ESC to exit
         break
 
