@@ -13,7 +13,9 @@ results = model.train(
     epochs=100,
     imgsz=640,
     patience=20,   # stop early if val performance plateaus
-    device=0,  # set to 0 if you have an NVIDIA GPU available otherwise set it to "cpu"
+    device="cpu",  # no NVIDIA GPU on this machine (AMD iGPU, no CUDA/ROCm) - set to 0 if you add one
+    workers=8,     # matches the amount of cores
+    cache="ram",   # dataset is small (~83MB) and fits in RAM - avoids re-decoding JPEGs each epoch
 )
 
 # Quick sanity check on the validation split
