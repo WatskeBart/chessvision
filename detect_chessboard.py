@@ -29,8 +29,6 @@ while True:
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
     edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
-    cv2.imshow('Contours Stream', contours_preview)
-
     contours, _ = cv2.findContours(
         edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
