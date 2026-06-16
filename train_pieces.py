@@ -1,23 +1,21 @@
 from ultralytics import YOLO
 
-# Path to the data.yaml that came with your chess-pieces dataset
-# (e.g. downloaded from Roboflow Universe in YOLO format).
-DATA_YAML = "datasets/chess-pieces/data.yaml"
+from settings import settings
 
 # Start from the COCO-pretrained nano checkpoint and fine-tune it -
 # much faster to converge than training from scratch.
-model = YOLO("yolo26n.pt")
+model = YOLO(str(settings.train_model_path))
 
 # Guard the training entrypoint. On Python 3.14 the DataLoader workers are
 # started via forkserver/spawn, which re-imports this module in each worker;
 # without this guard that re-import would relaunch training recursively.
 if __name__ == "__main__":
     results = model.train(
-        data=DATA_YAML,
-        epochs=100,
-        imgsz=640,
-        patience=20,   # stop early if val performance plateaus
-        device=0  # no NVIDIA GPU on this machine (AMD iGPU, no CUDA/ROCm) - set to 0 if you add one
+        data=str(settings.train_data_yaml),
+        epochs=settings.train_epochs,
+        imgsz=settings.train_imgsz,
+        patience=settings.train_patience,
+        device=settings.train_device,
     )
 
     # Quick sanity check on the validation split
