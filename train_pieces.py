@@ -13,7 +13,7 @@ results = model.train(
     epochs=100,
     imgsz=640,
     patience=20,   # stop early if val performance plateaus
-    device="cpu",  # set to 0 if you have an NVIDIA GPU available
+    device=0,  # set to 0 if you have an NVIDIA GPU available otherwise set it to "cpu"
 )
 
 # Quick sanity check on the validation split
