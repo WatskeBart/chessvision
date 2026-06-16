@@ -14,7 +14,7 @@ MODEL_PATH = "runs/detect/train-2/weights/best.pt"
 # If the warped board's top-left corner corresponds to square a8 from the
 # camera's point of view, leave this False. Flip to True if your camera/
 # board orientation puts a1 in the top-left instead.
-FLIP_ORIENTATION = False
+FLIP_ORIENTATION = True
 
 # The warped board is only as big as the board appears in the raw camera
 # frame, which can be quite small. Scale the displayed view up to at least
