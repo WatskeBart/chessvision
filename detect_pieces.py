@@ -25,6 +25,84 @@ FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
 #RANKS = "12345678"  # rank 1 first, matches a top-left = a1 orientation
 
+def _merge_collinear(lines, rho_thresh, theta_thresh=np.radians(5)):
+    """Collapse near-duplicate (rho, theta) Hough lines into one averaged
+    line each. A single grid line (the edge shared by two squares) is
+    typically detected several times, slightly offset by noise."""
+    merged = []
+    for rho, theta in sorted(lines, key=lambda line: line[0]):
+        for i, (mrho, mtheta, count) in enumerate(merged):
+            if abs(rho - mrho) < rho_thresh and abs(theta - mtheta) < theta_thresh:
+                merged[i] = (
+                    (mrho * count + rho) / (count + 1),
+                    (mtheta * count + theta) / (count + 1),
+                    count + 1,
+                )
+                break
+        else:
+            merged.append((rho, theta, 1))
+    return [(rho, theta) for rho, theta, _ in merged]
+
+
+def _line_intersection(line1, line2):
+    """Intersect two lines given in Hough (rho, theta) normal form."""
+    rho1, theta1 = line1
+    rho2, theta2 = line2
+    a = np.array([
+        [np.cos(theta1), np.sin(theta1)],
+        [np.cos(theta2), np.sin(theta2)],
+    ])
+    b = np.array([rho1, rho2])
+    if abs(np.linalg.det(a)) < 1e-6:
+        return None
+    return np.linalg.solve(a, b)
+
+
+def _find_board_corners_hough(edges):
+    """Find the board the way a checkerboard calibration target is found:
+    detect the straight lines formed by the rank/file square edges with a
+    Hough transform, split them into two perpendicular bundles, and take the
+    outermost line on each side as the board's boundary. Robust to a broken
+    or partially occluded outer border, as long as enough internal square
+    edges are visible to fix the grid's extent."""
+    h, w = edges.shape
+    min_vote = int(min(h, w) * 0.3)
+    lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=min_vote)
+    if lines is None or len(lines) < 4:
+        return None
+
+    verticals, horizontals = [], []
+    for rho, theta in lines[:, 0]:
+        theta_deg = np.degrees(theta)
+        # theta near 0/180 -> a vertical line (a file edge); theta near 90 ->
+        # a horizontal line (a rank edge).
+        if theta_deg < 45 or theta_deg > 135:
+            verticals.append((rho, theta))
+        else:
+            horizontals.append((rho, theta))
+
+    rho_thresh = min(h, w) * 0.02
+    verticals = _merge_collinear(verticals, rho_thresh)
+    horizontals = _merge_collinear(horizontals, rho_thresh)
+    if len(verticals) < 2 or len(horizontals) < 2:
+        return None
+
+    verticals.sort(key=lambda line: line[0])
+    horizontals.sort(key=lambda line: line[0])
+    left, right = verticals[0], verticals[-1]
+    top, bottom = horizontals[0], horizontals[-1]
+
+    corners = [
+        _line_intersection(top, left),
+        _line_intersection(top, right),
+        _line_intersection(bottom, right),
+        _line_intersection(bottom, left),
+    ]
+    if any(c is None for c in corners):
+        return None
+    return np.array(corners, dtype="float32")
+
+
 def find_board_corners(frame):
     """Locate the board's outer quadrilateral in the raw camera frame."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -34,14 +112,17 @@ def find_board_corners(frame):
     thresh = cv2.adaptiveThreshold(
         blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, threshold_kernel_size, 3
     )
-
     edges = cv2.Canny(thresh, 50, 200, None, 3)
 
-    # Close gaps in the border
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    corners = _find_board_corners_hough(edges)
+    if corners is not None:
+        return corners
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Fall back to the single outer-contour approach if the grid lines
+    # couldn't be resolved (e.g. low contrast, or too few squares visible).
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in sorted(contours, key=cv2.contourArea, reverse=True):
         peri = cv2.arcLength(cnt, True)
@@ -142,7 +223,7 @@ def main():
             warped = warp_board(frame, corners)
             view = warped
 
-            results = model(warped, verbose=False)[0]
+            results = model(warped, verbose=True)[0]
             view = results.plot(font_size=4, line_width=1)
 
             board = detections_to_board(results, warped.shape[1], warped.shape[0])
