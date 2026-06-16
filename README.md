@@ -26,3 +26,13 @@ flowchart LR
 | Raspberry Pi 4B      | Hosts its own Wi-Fi hotspot for the phone to join; runs the vision pipeline (`detect_chessboard.py` / `main.py`) |
 | Laptop                | Connected to the RPi over Ethernet; shares its own Wi-Fi Internet connection with the RPi (acts as a router) |
 | Internet                | Reached by the laptop over Wi-Fi, then passed through to the RPi via Ethernet |
+
+## Proof of Concepts
+
+### POC 1
+
+Detect the chessboard
+
+### POC 2
+
+Track chess moves via individual chess pieces
