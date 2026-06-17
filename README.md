@@ -132,6 +132,14 @@ uv run capture_dataset.py \
 Every 5th capture (configurable with `--val-every`) goes to the `valid/` split;
 the rest go to `train/`. A `data.yaml` is written once at startup.
 
+> **Tip:** Use [lichess.org/editor](https://lichess.org/editor) to build positions
+> fast. Drag pieces onto the board, then copy the FEN (it updates live in the URL
+> and the FEN box). Press `v` in `capture_dataset.py` to paste it straight from
+> the clipboard — no retyping. To cover many positions quickly, set up one
+> arrangement on lichess, paste it with `v`, capture a few frames, then tweak the
+> board and repeat. This lets you sweep through a wide variety of piece layouts
+> in minutes.
+
 After capturing, fine-tune from the existing weights:
 
 ```bash
