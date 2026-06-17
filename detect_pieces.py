@@ -127,7 +127,7 @@ def _check_display():
 
 def main():
     _check_display()
-    print("\n".join(TOGGLE_HELP_LINES))
+    #print("\n".join(TOGGLE_HELP_LINES))
 
     model_path = settings.pieces_model_path
     print(f"[init] loading model: {model_path}", flush=True)
@@ -151,6 +151,7 @@ def main():
     print_board = False
     flip = settings.flip_orientation
     snapshot_count = 0
+    frame_count = 0
 
     while True:
         ret, frame = cap.read()
@@ -159,6 +160,10 @@ def main():
             cap.release()
             cap = cv2.VideoCapture(url)
             continue
+
+        frame_count += 1
+        if frame_count == 1:
+            print("[loop] first frame received", flush=True)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners = find_corners(gray)
@@ -193,7 +198,11 @@ def main():
         if show_help:
             view = draw_help_overlay(view)
 
-        cv2.imshow("Chess piece detection", scale_for_display(view, settings.display_size))
+        try:
+            cv2.imshow("Chess piece detection", scale_for_display(view, settings.display_size))
+        except cv2.error as e:
+            print(f"[display] imshow failed: {e}", flush=True)
+            break
 
         key = cv2.waitKey(1) & 0xFF
         if key == 27:  # ESC — quit
