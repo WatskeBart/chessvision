@@ -19,6 +19,8 @@ Usage:
 Keys (in the window):
     space / s  capture the current frame (image + label, into the target split)
     e          enter a new FEN in the terminal (no restart needed)
+    v          paste FEN from clipboard (copy from e.g. lichess.org/editor)
+    m          type a move in UCI notation (e.g. a7a6) to update position
     f          toggle board flip orientation (fix mirrored square labels)
     r          rotate board view 90° clockwise (cycles 0→90→180→270→0)
     n          force a fresh stream read (skip ahead)
@@ -64,6 +66,39 @@ _CV2_ROTATIONS = {
     180: cv2.ROTATE_180,
     270: cv2.ROTATE_90_COUNTERCLOCKWISE,
 }
+
+
+def _read_clipboard():
+    """Return clipboard text or None. Tries pyperclip then xclip/xsel."""
+    try:
+        import pyperclip
+        return pyperclip.paste()
+    except Exception:
+        pass
+    import subprocess
+    for cmd in (
+        ["xclip", "-selection", "clipboard", "-o"],
+        ["xsel", "--clipboard", "--output"],
+    ):
+        try:
+            return subprocess.check_output(cmd, timeout=2).decode()
+        except Exception:
+            pass
+    return None
+
+
+def _board_from_fen(fen):
+    board = chess.Board(None)
+    board.set_board_fen(fen.split()[0])
+    return board
+
+
+def _gt_from_board(board):
+    return {
+        chess.square_name(sq): FEN_TO_CLASS[board.piece_at(sq).symbol()]
+        for sq in chess.SQUARES
+        if board.piece_at(sq) is not None
+    }
 
 
 def short_label(cls_name):
@@ -309,6 +344,10 @@ def parse_args():
         help="Do not add grid-cell boxes for known pieces the model missed.",
     )
     p.add_argument("--viz", action="store_true", help="Also save annotated viz images.")
+    p.add_argument(
+        "--infer-every", type=int, default=1, metavar="N",
+        help="Run model inference only every N frames; display at full speed in between (default 1 = every frame).",
+    )
     return p.parse_args()
 
 
@@ -316,7 +355,8 @@ def main():
     args = parse_args()
     from ultralytics import YOLO
 
-    gt = fen_to_ground_truth(args.fen)
+    board = _board_from_fen(args.fen)
+    gt = _gt_from_board(board)
     print(f"[init] ground-truth: {len(gt)} pieces from FEN")
 
     if not args.model.exists():
@@ -339,8 +379,10 @@ def main():
     synthesize = not args.no_synthesize
     session = time.strftime("%Y%m%d_%H%M%S")
     captured = 0
+    frame_idx = 0
+    labels, stats, warped, viz = [], {"matched": 0, "missing": 0, "synth": 0, "dropped": 0, "expected": len(gt)}, None, None
 
-    print("\nKeys: [space/s] capture  [e] new FEN  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
+    print("\nKeys: [space/s] capture  [e] new FEN  [v] paste FEN  [m] move  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
 
     while True:
         ret, frame = cap.read()
@@ -372,15 +414,17 @@ def main():
         except cv2.error:
             continue
 
-        result = model(warped, verbose=False, conf=args.propose_conf)[0]
         bh, bw = warped.shape[:2]
-        labels, stats = build_labels(
-            result, gt, bw, bh, settings.warp_padding, flip, synthesize, rotation
-        )
+        if frame_idx % args.infer_every == 0:
+            result = model(warped, verbose=False, conf=args.propose_conf)[0]
+            labels, stats = build_labels(
+                result, gt, bw, bh, settings.warp_padding, flip, synthesize, rotation
+            )
+            viz = draw_overlay(warped, labels, rotation)
+        frame_idx += 1
 
         to_valid = captured % args.val_every == args.val_every - 1
         split = "valid" if to_valid else "train"
-        viz = draw_overlay(warped, labels, rotation)
         display = cv2.rotate(viz, _CV2_ROTATIONS[rotation]) if rotation else viz
         display = draw_header(display, stats, flip, rotation, split, captured)
         cv2.imshow("Capture dataset", scale_for_display(display, settings.display_size))
@@ -392,10 +436,36 @@ def main():
             new_fen = input("[FEN] Enter new FEN: ").strip()
             if new_fen:
                 try:
-                    gt = fen_to_ground_truth(new_fen)
+                    board = _board_from_fen(new_fen)
+                    gt = _gt_from_board(board)
                     print(f"[FEN] updated — {len(gt)} pieces")
                 except Exception as exc:
                     print(f"[FEN] invalid FEN, keeping previous ({exc})")
+        elif key == ord("v"):
+            text = (_read_clipboard() or "").strip()
+            if text:
+                try:
+                    board = _board_from_fen(text)
+                    gt = _gt_from_board(board)
+                    print(f"[FEN] clipboard → {len(gt)} pieces")
+                except Exception as exc:
+                    print(f"[FEN] clipboard text is not a valid FEN ({exc})")
+            else:
+                print("[FEN] clipboard is empty or unavailable")
+        elif key == ord("m"):
+            move_str = input("[move] Enter UCI move (e.g. a7a6): ").strip()
+            if move_str:
+                try:
+                    move = chess.Move.from_uci(move_str)
+                    piece = board.piece_at(move.from_square)
+                    if piece is None:
+                        raise ValueError(f"no piece on {chess.square_name(move.from_square)}")
+                    board.remove_piece_at(move.from_square)
+                    board.set_piece_at(move.to_square, piece)
+                    gt = _gt_from_board(board)
+                    print(f"[move] {move_str} applied — {len(gt)} pieces")
+                except Exception as exc:
+                    print(f"[move] invalid move, board unchanged ({exc})")
         elif key == ord("f"):
             flip = not flip
             print(f"[toggle] flip → {'ON' if flip else 'OFF'} "
