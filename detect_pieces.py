@@ -130,18 +130,20 @@ def main():
     print("\n".join(TOGGLE_HELP_LINES))
 
     model_path = settings.pieces_model_path
+    print(f"[init] loading model: {model_path}", flush=True)
     if not model_path.exists():
-        import sys
-        print(f"ERROR: model not found: {model_path}", file=sys.stderr)
-        sys.exit(1)
+        print(f"ERROR: model not found: {model_path.resolve()}", flush=True)
+        raise SystemExit(1)
     model = YOLO(str(model_path))
+    print("[init] model loaded", flush=True)
 
     url = str(settings.stream_url)
+    print(f"[init] opening stream: {url}", flush=True)
     cap = cv2.VideoCapture(url)
     if not cap.isOpened():
-        import sys
-        print(f"ERROR: cannot open stream: {url}", file=sys.stderr)
-        sys.exit(1)
+        print(f"ERROR: cannot open stream: {url}", flush=True)
+        raise SystemExit(1)
+    print("[init] stream opened", flush=True)
 
     show_detections = True
     show_corners = False
