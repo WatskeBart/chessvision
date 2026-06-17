@@ -76,6 +76,7 @@ class GameTracker:
         start_fen: str | None = None,
         stability_frames: int = 6,
         min_match: int = 48,
+        diff_tolerance: int = 1,
         debug: bool = False,
         log=print,
     ):
@@ -87,6 +88,9 @@ class GameTracker:
         # A stable state must match at least this many of the 64 squares of some
         # legal position before we trust it. Filters out garbage detections.
         self.min_match = min_match
+        # "diff" mode: how many extra (spurious) changed squares to tolerate
+        # when matching the observed change set to a legal move's own squares.
+        self.diff_tolerance = diff_tolerance
         self.debug = debug
         self._log = log
         self._date = date.today().strftime("%Y.%m.%d")
@@ -111,14 +115,7 @@ class GameTracker:
         Does nothing until the same board state has been seen for
         `stability_frames` frames, at which point it tries to record a move."""
         observed = self._to_observed(board_dict)
-        key = frozenset(observed.items())
-        self._frames += 1
-
-        if key == self._stable_key:
-            self._stable_count += 1
-        else:
-            self._stable_key = key
-            self._stable_count = 1
+        newly_stable = self._advance_debounce(frozenset(observed.items()))
 
         if self.debug and self._frames % 30 == 0:
             self._log(
@@ -127,9 +124,48 @@ class GameTracker:
                 f"{self.stability_frames} frames"
             )
 
+        if newly_stable:
+            self._on_stable(observed)
+
+    def update_changed(self, changed_names: set[str]) -> bool:
+        """Feed one frame's *changed-square* set (model-free "diff" mode).
+
+        `changed_names` is the set of square names whose pixels differ from the
+        board as of the last committed move. Once that set has been stable for
+        `stability_frames` frames, the move whose own squares it matches is
+        recorded. Returns True iff a move was committed this frame, so the caller
+        can refresh its reference image to the new position."""
+        changed = self._names_to_squares(changed_names)
+        newly_stable = self._advance_debounce(frozenset(changed))
+
+        if self.debug and self._frames % 30 == 0:
+            self._log(
+                f"[rec/dbg] frame {self._frames}: {len(changed)} squares changed "
+                f"{self._fmt_squares(changed)}, stable for {self._stable_count}/"
+                f"{self.stability_frames} frames"
+            )
+
+        if newly_stable:
+            move = self._infer_move_from_changed(changed)
+            if move is not None:
+                self._commit(move)
+                return True
+        return False
+
+    def _advance_debounce(self, key) -> bool:
+        """Update the stability counter for `key`; return True exactly once, on
+        the frame a state first becomes stable (shared by both update paths)."""
+        self._frames += 1
+        if key == self._stable_key:
+            self._stable_count += 1
+        else:
+            self._stable_key = key
+            self._stable_count = 1
+
         if self._stable_count == self.stability_frames and key != self._evaluated_key:
             self._evaluated_key = key
-            self._on_stable(observed)
+            return True
+        return False
 
     def finalize(self) -> None:
         """Flush the final game state (e.g. when the user stops recording)."""
@@ -231,6 +267,80 @@ class GameTracker:
             return None
 
         return best_move
+
+    @staticmethod
+    def _names_to_squares(names: set[str]) -> set[int]:
+        """Square names -> `{square_index}`, dropping anything unparseable."""
+        squares = set()
+        for name in names:
+            try:
+                squares.add(chess.parse_square(name))
+            except ValueError:
+                continue
+        return squares
+
+    @staticmethod
+    def _fmt_squares(squares: set[int]) -> str:
+        return "{" + ", ".join(sorted(chess.square_name(s) for s in squares)) + "}"
+
+    def _altered_squares(self, move: chess.Move) -> set[int]:
+        """Squares whose occupant changes when `move` is played — i.e. the
+        squares an image diff should light up. Covers the from/to squares plus
+        the rook in castling and the captured pawn in en passant."""
+        before = self.board.piece_map()
+        self.board.push(move)
+        after = self.board.piece_map()
+        self.board.pop()
+        return {
+            sq for sq in set(before) | set(after) if before.get(sq) != after.get(sq)
+        }
+
+    def _infer_move_from_changed(self, changed: set[int]) -> chess.Move | None:
+        """Pick the legal move whose own squares the observed change set covers.
+
+        A move only qualifies once *every* square it alters shows change (so a
+        piece merely lifted off its origin, with the destination not yet filled,
+        matches nothing), while up to `diff_tolerance` extra changed squares are
+        tolerated as noise. Promotion piece type can't be read from occupancy,
+        so an otherwise-unique promotion defaults to a queen; any other tie is
+        treated as ambiguous and skipped."""
+        if not changed:
+            return None
+
+        best_extra = None
+        best_moves: list[chess.Move] = []
+        for move in self.board.legal_moves:
+            altered = self._altered_squares(move)
+            if not altered.issubset(changed):
+                continue
+            extra = len(changed - altered)
+            if extra > self.diff_tolerance:
+                continue
+            if best_extra is None or extra < best_extra:
+                best_extra, best_moves = extra, [move]
+            elif extra == best_extra:
+                best_moves.append(move)
+
+        if not best_moves:
+            self._log(
+                f"[rec] change {self._fmt_squares(changed)} matches no legal move — "
+                "press 'v' to validate against the model"
+            )
+            return None
+
+        if len(best_moves) > 1:
+            from_to = {(m.from_square, m.to_square) for m in best_moves}
+            if len(from_to) == 1 and all(m.promotion for m in best_moves):
+                if self.debug:
+                    self._log("[rec/dbg] promotion ambiguous; defaulting to queen")
+                return next(m for m in best_moves if m.promotion == chess.QUEEN)
+            self._log(
+                f"[rec] ambiguous change {self._fmt_squares(changed)} "
+                f"({len(best_moves)} legal moves fit); waiting for a clearer view"
+            )
+            return None
+
+        return best_moves[0]
 
     def _commit(self, move: chess.Move) -> None:
         # SAN and the move label must both be read before the move is pushed.

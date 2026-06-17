@@ -66,5 +66,34 @@ class Settings(BaseSettings):
     # the detection. Use this to find out why moves aren't being recorded.
     game_debug: bool = False
 
+    # Detection method used by detect_pieces.py:
+    #   "model" - run the YOLO piece detector every frame (identifies pieces).
+    #   "diff"  - model-free image subtraction: detect which squares changed vs
+    #             the last position and infer the move from the rules. Needs a
+    #             known start position and a locked board ('k'); the model stays
+    #             loaded only as a manual re-sync check ('v'). Toggle at runtime
+    #             with 'm'.
+    detection_mode: Literal["model", "diff"] = "model"
+
+    # "diff" mode tuning ---------------------------------------------------
+    # Mean absolute grayscale difference (0-255) within a square's centre, above
+    # which the square counts as "changed" vs the reference. Raise to ignore
+    # shadows/lighting, lower if real moves (esp. low-contrast ones) are missed.
+    diff_change_threshold: float = 18.0
+
+    # Central fraction of each square sampled for change (avoids grid lines and
+    # tall neighbouring pieces leaning over the boundary).
+    diff_inner_fraction: float = 0.7
+
+    # Frames with more changed squares than this are treated as transient noise
+    # (a hand passing over the board) and skipped. Castling alters 4 squares, so
+    # keep this >= 4 plus a little slack.
+    diff_max_changed: int = 6
+
+    # When matching the changed-square set to a legal move, how many *extra*
+    # changed squares (spurious noise) to tolerate beyond the move's own
+    # squares. Every square the move alters must still be observed as changed.
+    diff_tolerance: int = 1
+
 
 settings = Settings()
