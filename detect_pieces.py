@@ -92,11 +92,56 @@ def draw_corners_overlay(frame, corners, quad):
     return out
 
 
+def _check_display():
+    import os
+    import sys
+
+    display = os.environ.get("DISPLAY", "")
+    if not display:
+        print(
+            "ERROR: $DISPLAY is not set. Run with X11 forwarding (ssh -X) "
+            "and ensure DISPLAY is exported, e.g.:\n"
+            "  DISPLAY=:10.0 uv run detect_pieces.py",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Check that OpenCV was built with a GUI backend (GTK or Qt).
+    build_info = cv2.getBuildInformation()
+    has_gui = any(
+        f"{lib}:" in build_info and "YES" in build_info.split(f"{lib}:")[1].split("\n")[0]
+        for lib in ("GTK+", "GTK", "Qt5", "Qt6", "QT")
+    )
+    if not has_gui:
+        print(
+            "ERROR: OpenCV has no GUI backend (no GTK/Qt). "
+            "Install system OpenCV instead:\n"
+            "  sudo apt-get install python3-opencv\n"
+            "and remove 'opencv-python' from pyproject.toml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"[display] DISPLAY={display!r}  OpenCV GUI: ok")
+
+
 def main():
+    _check_display()
     print("\n".join(TOGGLE_HELP_LINES))
 
-    model = YOLO(str(settings.pieces_model_path))
-    cap = cv2.VideoCapture(str(settings.stream_url))
+    model_path = settings.pieces_model_path
+    if not model_path.exists():
+        import sys
+        print(f"ERROR: model not found: {model_path}", file=sys.stderr)
+        sys.exit(1)
+    model = YOLO(str(model_path))
+
+    url = str(settings.stream_url)
+    cap = cv2.VideoCapture(url)
+    if not cap.isOpened():
+        import sys
+        print(f"ERROR: cannot open stream: {url}", file=sys.stderr)
+        sys.exit(1)
 
     show_detections = True
     show_corners = False
