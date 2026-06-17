@@ -243,8 +243,9 @@ def main(start_fen=None, detection_mode=None):
     print(f"[init] detection mode: {detection_mode}")
     if detection_mode == "diff":
         print(
-            "[init] diff mode: set up the start position, press 'k' to lock the "
-            "board, then 'r' to record. The model is kept only for 'v' re-sync."
+            "[init] diff mode: set up the start position with the whole board "
+            "visible, then press 'r' to record (the board auto-locks). Press 'p' "
+            "to print changed squares; the model is kept only for 'v' re-sync."
         )
     if start_fen:
         print(f"[init] recording will start from: {start_fen}")
@@ -450,17 +451,28 @@ def main(start_fen=None, detection_mode=None):
             else:
                 validate_with_model(model, warped, tracker)
         elif key == ord("r"):
-            if tracker is None:
-                tracker = start_recording(start_fen)
-                # Anchor the diff reference to the start position being recorded.
-                reference_warped = warped.copy() if warped is not None else None
-            else:
+            if tracker is not None:
                 tracker.finalize()
                 print(
                     f"[rec] recording stopped ({tracker.move_count} moves) "
                     f"-> {tracker.pgn_path}"
                 )
                 tracker = None
+            elif detection_mode == "diff" and locked_quad is None and quad is None:
+                print(
+                    "[rec] can't start diff recording: board not detected. Make the "
+                    "whole board visible (no hands/pieces hiding the grid), then 'r'."
+                )
+            else:
+                # Diff mode needs a stable warp: auto-lock on record start so the
+                # reference image and every later frame share one transform.
+                if detection_mode == "diff" and locked_quad is None:
+                    locked_quad = quad.copy()
+                    board_visible = True
+                    print("[calib] board auto-locked for diff recording (press 'k' to unlock).")
+                tracker = start_recording(start_fen)
+                # Anchor the diff reference to the start position being recorded.
+                reference_warped = warped.copy() if warped is not None else None
         elif key == ord("s"):
             path = f"snapshot_{snapshot_count}.png"
             cv2.imwrite(path, view)
