@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # board orientation puts a1 in the top-left instead.
     flip_orientation: bool = True
 
+    # Minimum confidence for a piece detection to be accepted. Raise this to
+    # suppress false positives on empty squares (e.g. 0.5–0.7).
+    pieces_conf_threshold: float = 0.4
+
     # The warped board is only as big as the board appears in the raw camera
     # frame, which can be quite small. Scale the displayed view up to at least
     # this many pixels on a side so detected pieces/boxes are easy to see.

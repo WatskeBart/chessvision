@@ -157,6 +157,7 @@ def warp_board(frame, corners):
 def main():
     """Standalone preview: warp the detected board out of the live stream."""
     cap = cv2.VideoCapture(str(settings.stream_url))
+    warp_enabled = True
 
     while True:
         ret, frame = cap.read()
@@ -167,11 +168,20 @@ def main():
         view = frame
         if corners is not None:
             cv2.drawContours(frame, [corners.astype(np.int32)], -1, (0, 255, 0), 2)
-            view = warp_board(frame, corners)
+            if warp_enabled:
+                view = warp_board(frame, corners)
+
+        label = "warp: ON" if warp_enabled else "warp: OFF"
+        cv2.putText(
+            view, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+        )
 
         cv2.imshow("Chessboard detection", view)
-        if cv2.waitKey(1) & 0xFF == 27:  # Press ESC to exit
+        key = cv2.waitKey(1) & 0xFF
+        if key == 27:  # ESC to exit
             break
+        if key == ord("w"):
+            warp_enabled = not warp_enabled
 
     cap.release()
     cv2.destroyAllWindows()

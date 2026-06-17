@@ -8,22 +8,27 @@ square.
 ## How it works
 
 The pipeline runs per frame in [detect_pieces.py](detect_pieces.py). Board
-detection and warping live in [detect_chessboard.py](detect_chessboard.py),
+detection and warping live in [detect_corners_cv.py](detect_corners_cv.py),
 which [detect_pieces.py](detect_pieces.py) imports:
 
-1. **Find the board** — `find_board_corners()` detects the rank/file grid lines
-   with a Hough transform and takes the outermost line on each side as the board
-   boundary. This is robust to a broken or partially occluded outer border. If
-   the grid lines can't be resolved (low contrast, too few squares visible) it
-   falls back to finding the largest 4-sided contour.
-2. **Warp** — `warp_board()` perspective-warps the frame to a square top-down
-   view of the board.
-3. **Detect pieces** — a YOLO model (12 classes: 6 piece types × {white, black})
+1. **Find the board** — `find_corners()` uses OpenCV's `findChessboardCornersSB`
+   to locate the 7×7 internal grid intersections. This newer variant handles poor
+   lighting and partial occlusion better than the classic detector; it falls back
+   to `findChessboardCorners` + sub-pixel refinement if needed.
+2. **Extrapolate the outer quad** — `board_quad_from_corners()` estimates
+   one-square step vectors from the corner grid and extrapolates outward to the
+   board's actual edge.
+3. **Warp** — `warp_board()` perspective-warps the detected quad to an 800 × 800
+   top-down view.
+4. **Detect pieces** — a YOLO model (12 classes: 6 piece types × {white, black})
    runs on the warped view.
-4. **Map to squares** — `detections_to_board()` assigns each detection to a
+5. **Map to squares** — `detections_to_board()` assigns each detection to a
    square using the box's bottom-center point (a piece's base sits on its
-   square), keeping the highest-confidence detection per square, and prints the
-   occupied squares as `e1:white-king, ...`.
+   square), keeping the highest-confidence detection per square.
+
+[detect_chessboard.py](detect_chessboard.py) is an older alternative that uses a
+Hough-line transform instead of the corner detector; it is still runnable as a
+standalone preview.
 
 ## Setup
 
@@ -53,6 +58,7 @@ cp .env.example .env
 | `GRANDMASTER_TRAIN_PATIENCE` | `20` | Early-stopping patience |
 | `GRANDMASTER_TRAIN_DEVICE` | `0` | GPU index for training |
 | `GRANDMASTER_FLIP_ORIENTATION` | `true` | Set `true` when the warped top-left square is a1; leave `false` when it's a8 |
+| `GRANDMASTER_PIECES_CONF_THRESHOLD` | `0.4` | Minimum YOLO confidence to accept a piece detection; raise (e.g. 0.5–0.7) to suppress false positives |
 | `GRANDMASTER_DISPLAY_SIZE` | `800` | Minimum side length (px) to upscale the displayed board to |
 
 ## Usage
@@ -61,7 +67,10 @@ cp .env.example .env
 # Preview the raw camera stream
 uv run view_camera.py
 
-# Debug board detection (corner overlay + warp), no piece model needed
+# Debug board detection using OpenCV's corner detector (corner overlay + warp)
+uv run detect_corners_cv.py
+
+# Debug board detection using the Hough-line approach (alternative)
 uv run detect_chessboard.py
 
 # Full pipeline: detect the board and the pieces on it
@@ -72,6 +81,18 @@ uv run train_pieces.py
 ```
 
 Press `ESC` to close any of the OpenCV preview windows.
+
+### Keyboard toggles in `detect_pieces.py`
+
+| Key | Action |
+| --- | --- |
+| `h` | Show / hide the help overlay |
+| `d` | Toggle detection boxes and labels |
+| `c` | Toggle corner overlay on the raw frame |
+| `p` | Toggle printing the board state to stdout |
+| `f` | Toggle board flip orientation (equivalent to `GRANDMASTER_FLIP_ORIENTATION`) |
+| `s` | Save current frame as `snapshot_<n>.png` |
+| `ESC` | Quit |
 
 ### Training
 
