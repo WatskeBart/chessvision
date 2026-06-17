@@ -52,5 +52,14 @@ class Settings(BaseSettings):
     # visible so the piece detector can still find them.
     warp_padding: int = 40
 
+    # Game recording (track_game.py, toggled with "r" in detect_pieces.py).
+    # Number of consecutive identical frames before a detected board state is
+    # accepted as stable and a move is inferred. Higher = more robust to
+    # detection flicker, but adds a little lag after each physical move.
+    game_stability_frames: int = 6
+
+    # Directory where recorded games (a .pgn file and a .fen.log) are written.
+    games_dir: Path = Path("games")
+
 
 settings = Settings()

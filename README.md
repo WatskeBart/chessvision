@@ -25,6 +25,17 @@ which [detect_pieces.py](detect_pieces.py) imports:
 5. **Map to squares** — `detections_to_board()` assigns each detection to a
    square using the box's bottom-center point (a piece's base sits on its
    square), keeping the highest-confidence detection per square.
+6. **Track the game** — [track_game.py](track_game.py)'s `GameTracker` turns the
+   per-frame square map into a recorded game. Detections flicker, so a board
+   state is only trusted once it has been stable for several frames
+   (`GRANDMASTER_GAME_STABILITY_FRAMES`). When a stable state differs from the
+   current position, the tracker asks [python-chess](https://python-chess.readthedocs.io/)
+   for the legal move whose *resulting* placement best matches the detection —
+   which makes captures, castling, en passant and promotion fall out
+   automatically, and ignores detections that match no legal move. Each accepted
+   move is written to a `.pgn` file and a human-readable `.fen.log` in
+   `GRANDMASTER_GAMES_DIR`. Recording starts from the standard opening position
+   and is toggled live with the `r` key (see toggles below).
 
 [detect_chessboard.py](detect_chessboard.py) is an older alternative that uses a
 Hough-line transform instead of the corner detector; it is still runnable as a
@@ -60,6 +71,8 @@ cp .env.example .env
 | `GRANDMASTER_FLIP_ORIENTATION` | `true` | Set `true` when the warped top-left square is a1; leave `false` when it's a8 |
 | `GRANDMASTER_PIECES_CONF_THRESHOLD` | `0.4` | Minimum YOLO confidence to accept a piece detection; raise (e.g. 0.5–0.7) to suppress false positives |
 | `GRANDMASTER_DISPLAY_SIZE` | `800` | Minimum side length (px) to upscale the displayed board to |
+| `GRANDMASTER_GAME_STABILITY_FRAMES` | `6` | Consecutive identical frames before a board state is accepted and a move recorded |
+| `GRANDMASTER_GAMES_DIR` | `games` | Directory where recorded games (`.pgn` + `.fen.log`) are written |
 
 ## Usage
 
@@ -73,8 +86,12 @@ uv run detect_corners_cv.py
 # Debug board detection using the Hough-line approach (alternative)
 uv run detect_chessboard.py
 
-# Full pipeline: detect the board and the pieces on it
+# Full pipeline: detect the board and the pieces on it (press "r" to record)
 uv run detect_pieces.py
+
+# Record starting from a mid-game position instead of the standard opening.
+# Accepts a full FEN, or just the piece-placement field (White assumed to move).
+uv run detect_pieces.py --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 2 3"
 
 # Capture a labelled training dataset from the live stream (see below)
 uv run capture_dataset.py --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
@@ -100,8 +117,9 @@ Press `ESC` to close any of the OpenCV preview windows.
 | `c` | Toggle corner overlay on the raw frame |
 | `p` | Toggle printing the board state to stdout |
 | `f` | Toggle board flip orientation (equivalent to `GRANDMASTER_FLIP_ORIENTATION`) |
+| `r` | Start / stop recording the game to `games/game_<timestamp>.{pgn,fen.log}` |
 | `s` | Save current frame as `snapshot_<n>.png` |
-| `ESC` | Quit |
+| `ESC` | Quit (finalizes an in-progress recording first) |
 
 ### Capturing a training dataset (`capture_dataset.py`)
 

@@ -1,8 +1,13 @@
+import argparse
+import sys
+from datetime import datetime
+
 import cv2
 from ultralytics import YOLO
 
 from detect_corners_cv import board_quad_from_corners, find_corners, warp_board
 from settings import settings
+from track_game import GameTracker, normalize_fen
 
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
@@ -14,6 +19,7 @@ TOGGLE_HELP_LINES = [
     "  c  toggle corner overlay on raw frame",
     "  p  toggle printing board state to stdout",
     "  f  toggle board flip orientation",
+    "  r  start/stop recording the game (PGN + FEN log)",
     "  s  save current frame to snapshot_<n>.png",
     "  ESC  quit",
 ]
@@ -92,6 +98,37 @@ def draw_corners_overlay(frame, corners, quad):
     return out
 
 
+def draw_record_overlay(frame, tracker):
+    """Draw a red REC indicator with move count and last move, bottom-left."""
+    out = frame.copy()
+    h = out.shape[0]
+    text = f"REC  moves: {tracker.move_count}"
+    if tracker.last_san:
+        text += f"  last: {tracker.last_san}"
+    cv2.circle(out, (18, h - 16), 7, (0, 0, 255), -1)
+    cv2.putText(
+        out, text, (34, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        (0, 0, 255), 2, cv2.LINE_AA,
+    )
+    return out
+
+
+def start_recording(start_fen=None):
+    """Create a GameTracker writing to timestamped files in settings.games_dir."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    pgn_path = settings.games_dir / f"game_{ts}.pgn"
+    fen_path = settings.games_dir / f"game_{ts}.fen.log"
+    tracker = GameTracker(
+        pgn_path,
+        fen_path,
+        start_fen=start_fen,
+        stability_frames=settings.game_stability_frames,
+    )
+    origin = "custom position" if start_fen else "standard opening"
+    print(f"[rec] recording started from {origin} -> {pgn_path}")
+    return tracker
+
+
 def _check_display():
     import os
     import sys
@@ -116,9 +153,11 @@ def _check_display():
     print(f"[display] DISPLAY={display!r}  OpenCV GUI: {gui_status}")
 
 
-def main():
+def main(start_fen=None):
     _check_display()
     print("\n".join(TOGGLE_HELP_LINES))
+    if start_fen:
+        print(f"[init] recording will start from: {start_fen}")
 
     model_path = settings.pieces_model_path
     print(f"[init] loading model: {model_path}", flush=True)
@@ -143,6 +182,7 @@ def main():
     flip = settings.flip_orientation
     snapshot_count = 0
     frame_count = 0
+    tracker = None  # GameTracker while recording, else None
 
     while True:
         ret, frame = cap.read()
@@ -184,9 +224,15 @@ def main():
                     f"{sq}:{label}" for sq, (label, _) in sorted(board.items())
                 )
                 print(occupied)
+
+            if tracker is not None:
+                tracker.update(board)
         elif show_corners:
             # No board found — show raw frame so the user can see what's happening
             view = frame
+
+        if tracker is not None:
+            view = draw_record_overlay(view, tracker)
 
         if show_help:
             view = draw_help_overlay(view)
@@ -201,6 +247,9 @@ def main():
         if frame_count == 1:
             print(f"[loop] waitKey returned {key}", flush=True)
         if key == 27:  # ESC — quit
+            if tracker is not None:
+                tracker.finalize()
+                print(f"[rec] recording stopped -> {tracker.pgn_path}")
             cap.release()
             break
         elif key == ord("h"):
@@ -222,6 +271,16 @@ def main():
                 f"[toggle] flip orientation: {'on' if flip else 'off'} "
                 f"(A1 at {corner})"
             )
+        elif key == ord("r"):
+            if tracker is None:
+                tracker = start_recording(start_fen)
+            else:
+                tracker.finalize()
+                print(
+                    f"[rec] recording stopped ({tracker.move_count} moves) "
+                    f"-> {tracker.pgn_path}"
+                )
+                tracker = None
         elif key == ord("s"):
             path = f"snapshot_{snapshot_count}.png"
             cv2.imwrite(path, view)
@@ -232,5 +291,28 @@ def main():
     cv2.destroyAllWindows()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Detect a live chess board and pieces, and optionally record "
+        "the game (press 'r' to start/stop)."
+    )
+    parser.add_argument(
+        "--from-fen",
+        metavar="FEN",
+        help="Record starting from this position instead of the standard "
+        "opening. Accepts a full FEN, or just the piece-placement field "
+        "(in which case White is assumed to move first).",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    start_fen = None
+    if args.from_fen:
+        try:
+            start_fen = normalize_fen(args.from_fen)
+        except ValueError as e:
+            print(f"ERROR: invalid --from-fen: {e}", file=sys.stderr)
+            raise SystemExit(2) from None
+    main(start_fen)
