@@ -16,11 +16,11 @@ class Settings(BaseSettings):
 
     # Path to a YOLO model fine-tuned on chess pieces (12 classes: 6 piece
     # types x {white, black}), used for inference in detect_pieces.py.
-    pieces_model_path: Path = Path("runs/detect/train/weights/best.pt")
+    pieces_model_path: Path = Path("models/pieces.pt")
 
     # Base checkpoint to fine-tune from in train_pieces.py. yolo26n.pt is the
     # COCO-pretrained nano model - much faster to converge than from scratch.
-    train_model_path: Path = Path("yolo26n.pt")
+    train_model_path: Path = Path("models/yolo26n.pt")
 
     # data.yaml that came with the chess-pieces dataset (YOLO format).
     train_data_yaml: Path = Path("datasets/chess-pieces/data.yaml")
