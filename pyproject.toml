@@ -9,9 +9,6 @@ dependencies = [
     "ultralytics>=8.4.67",
 ]
 
-[tool.uv]
-system-site-packages = true
-
 [dependency-groups]
 dev = [
     "ruff>=0.14.0",
