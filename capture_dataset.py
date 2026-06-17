@@ -30,6 +30,7 @@ from pathlib import Path
 
 import chess
 import cv2
+import numpy as np
 
 from detect_corners_cv import board_quad_from_corners, find_corners, warp_board
 from detect_pieces import scale_for_display
@@ -71,8 +72,36 @@ def short_label(cls_name):
     return f"{color[0]}{initial}"
 
 
+_TEXT_CCW_FLAGS = {
+    90: cv2.ROTATE_90_COUNTERCLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_CLOCKWISE,
+}
+
+
+def _put_text_rotated(img, text, org, font, scale, color, thickness, ccw_deg):
+    """Draw text at org (bottom-left anchor), rotated ccw_deg° counter-clockwise."""
+    if ccw_deg == 0:
+        cv2.putText(img, text, org, font, scale, color, thickness, cv2.LINE_AA)
+        return
+    x, y = org
+    (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
+    pad = 1
+    tmp = np.zeros((th + baseline + 2 * pad, tw + 2 * pad, 3), dtype=np.uint8)
+    cv2.putText(tmp, text, (pad, th + pad), font, scale, color, thickness, cv2.LINE_AA)
+    tmp = cv2.rotate(tmp, _TEXT_CCW_FLAGS[ccw_deg])
+    rh, rw = tmp.shape[:2]
+    tx, ty = x, y - rh
+    ix1 = max(0, tx); ix2 = min(img.shape[1], tx + rw)
+    iy1 = max(0, ty); iy2 = min(img.shape[0], ty + rh)
+    if ix1 >= ix2 or iy1 >= iy2:
+        return
+    patch = tmp[iy1 - ty:iy2 - ty, ix1 - tx:ix2 - tx]
+    mask = patch.any(axis=2)
+    img[iy1:iy2, ix1:ix2][mask] = patch[mask]
+
+
 def grid_to_square(col, row, flip, rotation=0):
-    # Undo image rotation to recover chess-coordinate origin
     if rotation == 90:
         col, row = row, 7 - col
     elif rotation == 180:
@@ -86,9 +115,9 @@ def grid_to_square(col, row, flip, rotation=0):
 
 def square_to_grid(sq, flip, rotation=0):
     col, row = FILES.index(sq[0]), RANKS.index(sq[1])
-    # Inverse flip, then inverse rotation
     if flip:
         col, row = 7 - col, 7 - row
+    # Inverse rotation
     if rotation == 90:
         col, row = 7 - row, col
     elif rotation == 180:
@@ -185,8 +214,8 @@ def _norm_box(x1, y1, x2, y2, w, h, cls_name, source):
     return (CLASS_ID[cls_name], clip(xc), clip(yc), clip(bw), clip(bh), source)
 
 
-def draw_overlay(warped, labels, stats, flip, rotation, split, captured):
-    """Annotate the warped board with final labels and a status header."""
+def draw_overlay(warped, labels, rotation):
+    """Annotate the warped board with detection boxes and piece labels."""
     out = warped.copy()
     h, w = out.shape[:2]
     for cls_id, xc, yc, bw, bh, source in labels:
@@ -196,11 +225,17 @@ def draw_overlay(warped, labels, stats, flip, rotation, split, captured):
         y2 = int((yc + bh / 2) * h)
         color = (0, 255, 0) if source == "model" else (255, 200, 0)  # green / cyan
         cv2.rectangle(out, (x1, y1), (x2, y2), color, 1)
-        cv2.putText(
+        _put_text_rotated(
             out, short_label(CLASS_NAMES[cls_id]), (x1, max(10, y1 - 3)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA,
+            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, rotation,
         )
+    return out
 
+
+def draw_header(img, stats, flip, rotation, split, captured):
+    """Draw the status banner at the top of img; always returns a fresh copy."""
+    out = img.copy()
+    w = out.shape[1]
     header = (
         f"flip:{'ON' if flip else 'OFF'}  rot:{rotation}°  split:{split}  saved:{captured}  |  "
         f"matched {stats['matched']}/{stats['expected']}  "
@@ -336,9 +371,6 @@ def main():
         except cv2.error:
             continue
 
-        if rotation:
-            warped = cv2.rotate(warped, _CV2_ROTATIONS[rotation])
-
         result = model(warped, verbose=False, conf=args.propose_conf)[0]
         bh, bw = warped.shape[:2]
         labels, stats = build_labels(
@@ -347,8 +379,10 @@ def main():
 
         to_valid = captured % args.val_every == args.val_every - 1
         split = "valid" if to_valid else "train"
-        viz = draw_overlay(warped, labels, stats, flip, rotation, split, captured)
-        cv2.imshow("Capture dataset", scale_for_display(viz, settings.display_size))
+        viz = draw_overlay(warped, labels, rotation)
+        display = cv2.rotate(viz, _CV2_ROTATIONS[rotation]) if rotation else viz
+        display = draw_header(display, stats, flip, rotation, split, captured)
+        cv2.imshow("Capture dataset", scale_for_display(display, settings.display_size))
 
         key = cv2.waitKey(1) & 0xFF
         if key in (27, ord("q")):
