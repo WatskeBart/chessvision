@@ -57,14 +57,18 @@ def board_quad_from_corners(corners):
     return np.array([tl, tr, br, bl], dtype="float32")
 
 
-def warp_board(frame, quad, size=800):
-    """Perspective-warp the detected quad to a square top-down view."""
+def warp_board(frame, quad, size=800, padding=0):
+    """Perspective-warp the detected quad to a square top-down view.
+
+    padding adds extra pixels of original context around each edge so pieces
+    that overhang the board boundary are still visible in the output image."""
+    p = padding
     dst = np.array(
-        [[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]],
+        [[p, p], [size + p - 1, p], [size + p - 1, size + p - 1], [p, size + p - 1]],
         dtype="float32",
     )
     M = cv2.getPerspectiveTransform(quad, dst)
-    return cv2.warpPerspective(frame, M, (size, size))
+    return cv2.warpPerspective(frame, M, (size + 2 * p, size + 2 * p))
 
 
 def main():
@@ -91,7 +95,11 @@ def main():
             if warp_enabled:
                 quad = board_quad_from_corners(corners)
                 try:
-                    view = warp_board(frame, quad, size=settings.display_size)
+                    view = warp_board(
+                        frame, quad,
+                        size=settings.display_size,
+                        padding=settings.warp_padding,
+                    )
                 except cv2.error:
                     pass  # degenerate quad; keep the annotated raw frame
 

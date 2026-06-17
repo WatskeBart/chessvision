@@ -25,17 +25,17 @@ def square_name(col, row):
     return f"{FILES[col]}{RANKS[row]}"
 
 
-def detections_to_board(result, board_w, board_h):
+def detections_to_board(result, board_w, board_h, padding=0):
     """Map each detected piece to a square based on the box's bottom-center
     point (a piece's base sits on its square, the box center does not)."""
     board = {}
-    cell_w = board_w / 8
-    cell_h = board_h / 8
+    cell_w = (board_w - 2 * padding) / 8
+    cell_h = (board_h - 2 * padding) / 8
 
     for box in result.boxes:
         x1, y1, x2, y2 = box.xyxy[0].tolist()
-        cx = (x1 + x2) / 2
-        cy = y2  # bottom edge of the box
+        cx = (x1 + x2) / 2 - padding
+        cy = y2 - padding  # bottom edge of the box, offset by padding
 
         col = min(7, max(0, int(cx // cell_w)))
         row = min(7, max(0, int(cy // cell_h)))
@@ -162,7 +162,7 @@ def main():
 
         if corners is not None:
             quad = board_quad_from_corners(corners)
-            warped = warp_board(frame, quad)
+            warped = warp_board(frame, quad, padding=settings.warp_padding)
 
             results = model(
                 warped, verbose=False, conf=settings.pieces_conf_threshold
@@ -176,7 +176,9 @@ def main():
             if show_corners:
                 view = draw_corners_overlay(view, corners, quad)
 
-            board = detections_to_board(results, warped.shape[1], warped.shape[0])
+            board = detections_to_board(
+                results, warped.shape[1], warped.shape[0], padding=settings.warp_padding
+            )
             if print_board and board:
                 occupied = ", ".join(
                     f"{sq}:{label}" for sq, (label, _) in sorted(board.items())

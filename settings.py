@@ -38,12 +38,17 @@ class Settings(BaseSettings):
 
     # Minimum confidence for a piece detection to be accepted. Raise this to
     # suppress false positives on empty squares (e.g. 0.5–0.7).
-    pieces_conf_threshold: float = 0.4
+    pieces_conf_threshold: float = 0.3
 
     # The warped board is only as big as the board appears in the raw camera
     # frame, which can be quite small. Scale the displayed view up to at least
     # this many pixels on a side so detected pieces/boxes are easy to see.
     display_size: int = 800
+
+    # Extra pixels of original image context to include around each edge of the
+    # warped board. Pieces that overhang the detected board boundary remain
+    # visible so the piece detector can still find them.
+    warp_padding: int = 40
 
 
 settings = Settings()
