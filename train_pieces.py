@@ -8,18 +8,22 @@ DATA_YAML = "datasets/chess-pieces/data.yaml"
 # much faster to converge than training from scratch.
 model = YOLO("yolo26n.pt")
 
-results = model.train(
-    data=DATA_YAML,
-    epochs=100,
-    imgsz=640,
-    patience=20,   # stop early if val performance plateaus
-    device=0,  # set to 0 if you have an NVIDIA GPU available otherwise set it to "cpu"
-)
+# Guard the training entrypoint. On Python 3.14 the DataLoader workers are
+# started via forkserver/spawn, which re-imports this module in each worker;
+# without this guard that re-import would relaunch training recursively.
+if __name__ == "__main__":
+    results = model.train(
+        data=DATA_YAML,
+        epochs=100,
+        imgsz=640,
+        patience=20,   # stop early if val performance plateaus
+        device=0  # no NVIDIA GPU on this machine (AMD iGPU, no CUDA/ROCm) - set to 0 if you add one
+    )
 
-# Quick sanity check on the validation split
-metrics = model.val()
-print(metrics)
+    # Quick sanity check on the validation split
+    metrics = model.val()
+    print(metrics)
 
-# Export the best weights to ONNX for fast inference on the Raspberry Pi.
-# Swap format="ncnn" instead if you want even faster ARM CPU inference.
-model.export(format="onnx")
+    # Export the best weights to ONNX for fast inference on the Raspberry Pi.
+    # Swap format="ncnn" instead if you want even faster ARM CPU inference.
+    model.export(format="onnx")
