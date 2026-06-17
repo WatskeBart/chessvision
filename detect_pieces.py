@@ -14,6 +14,21 @@ from track_game import GameTracker, label_to_symbol, normalize_fen
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
 
+_ROTATIONS = {
+    90: cv2.ROTATE_90_CLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+
+
+def rotate_board(image, degrees):
+    """Rotate a (square) warped board clockwise by 0/90/180/270 degrees.
+
+    The board region is centred and square, so a quarter-turn maps cells to
+    cells cleanly and the padding stays symmetric."""
+    code = _ROTATIONS.get(degrees % 360)
+    return image if code is None else cv2.rotate(image, code)
+
 TOGGLE_HELP_LINES = [
     "Keyboard toggles:",
     "  h  show/hide this help",
@@ -23,6 +38,7 @@ TOGGLE_HELP_LINES = [
     "  m  switch detection mode (model <-> diff/subtraction)",
     "  v  validate current board against the model (diff mode)",
     "  p  toggle printing board state to stdout",
+    "  o  rotate board orientation 90 (fix sideways camera)",
     "  f  toggle board flip orientation",
     "  r  start/stop recording the game (PGN + FEN log)",
     "  s  save current frame to snapshot_<n>.png",
@@ -79,7 +95,7 @@ def draw_help_overlay(frame):
     font = cv2.FONT_HERSHEY_SIMPLEX
     scale, thickness, pad = 0.55, 1, 10
     line_h = 22
-    box_w = 480
+    box_w = 600
     box_h = pad * 2 + line_h * len(TOGGLE_HELP_LINES)
     overlay = out.copy()
     cv2.rectangle(overlay, (0, 0), (box_w, box_h), (0, 0, 0), -1)
@@ -271,6 +287,7 @@ def main(start_fen=None, detection_mode=None):
     show_help = False
     print_board = False
     flip = settings.flip_orientation
+    board_rotation = settings.board_rotation
     snapshot_count = 0
     frame_count = 0
     tracker = None  # GameTracker while recording, else None
@@ -323,6 +340,8 @@ def main(start_fen=None, detection_mode=None):
         warped = None  # kept in scope for the 'v' validate handler
         if quad is not None:
             warped = warp_board(frame, quad, padding=settings.warp_padding)
+            if board_rotation:
+                warped = rotate_board(warped, board_rotation)
 
             if detection_mode == "diff":
                 if reference_warped is None:
@@ -433,6 +452,10 @@ def main(start_fen=None, detection_mode=None):
         elif key == ord("p"):
             print_board = not print_board
             print(f"[toggle] print board state: {'on' if print_board else 'off'}")
+        elif key == ord("o"):
+            board_rotation = (board_rotation + 90) % 360
+            reference_warped = None  # orientation changed; re-anchor diff reference
+            print(f"[toggle] board rotation: {board_rotation}°")
         elif key == ord("f"):
             flip = not flip
             settings.flip_orientation = flip

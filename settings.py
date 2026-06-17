@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # GPU index (e.g. 0) if you have an NVIDIA/CUDA GPU, or "cpu" to train on CPU.
     train_device: int | Literal["cpu"] = 0
 
+    # Clockwise rotation (0/90/180/270 degrees) applied to the warped board
+    # before mapping pieces to squares. Use this when the board sits under the
+    # camera turned a quarter/three-quarter turn (files and ranks swapped).
+    # Cycle at runtime with 'o'. flip_orientation handles the remaining 180°.
+    board_rotation: Literal[0, 90, 180, 270] = 90
+
     # If the warped board's top-left corner corresponds to square a8 from the
     # camera's point of view, leave this False. Flip to True if your camera/
     # board orientation puts a1 in the top-left instead.
