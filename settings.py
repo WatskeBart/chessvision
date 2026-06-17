@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 from pydantic import AnyUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,7 +30,8 @@ class Settings(BaseSettings):
     train_epochs: int = 100
     train_imgsz: int = 640
     train_patience: int = 20  # stop early if val performance plateaus
-    train_device: int = 0  # GPU index; set if you add an NVIDIA/CUDA GPU
+    # GPU index (e.g. 0) if you have an NVIDIA/CUDA GPU, or "cpu" to train on CPU.
+    train_device: int | Literal["cpu"] = 0
 
     # If the warped board's top-left corner corresponds to square a8 from the
     # camera's point of view, leave this False. Flip to True if your camera/
