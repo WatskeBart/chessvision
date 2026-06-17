@@ -19,6 +19,7 @@ Usage:
 Keys (in the window):
     space / s  capture the current frame (image + label, into the target split)
     f          toggle board flip orientation (fix mirrored square labels)
+    r          rotate board view 90° clockwise (cycles 0→90→180→270→0)
     n          force a fresh stream read (skip ahead)
     ESC / q    quit
 """
@@ -56,6 +57,12 @@ FEN_TO_CLASS = {
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first → top-left of the warped board
 
+_CV2_ROTATIONS = {
+    90: cv2.ROTATE_90_CLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+
 
 def short_label(cls_name):
     """'white-knight' -> 'wN', for compact on-screen text."""
@@ -64,16 +71,30 @@ def short_label(cls_name):
     return f"{color[0]}{initial}"
 
 
-def grid_to_square(col, row, flip):
+def grid_to_square(col, row, flip, rotation=0):
+    # Undo image rotation to recover chess-coordinate origin
+    if rotation == 90:
+        col, row = row, 7 - col
+    elif rotation == 180:
+        col, row = 7 - col, 7 - row
+    elif rotation == 270:
+        col, row = 7 - row, col
     if flip:
         col, row = 7 - col, 7 - row
     return f"{FILES[col]}{RANKS[row]}"
 
 
-def square_to_grid(sq, flip):
+def square_to_grid(sq, flip, rotation=0):
     col, row = FILES.index(sq[0]), RANKS.index(sq[1])
+    # Inverse flip, then inverse rotation
     if flip:
         col, row = 7 - col, 7 - row
+    if rotation == 90:
+        col, row = 7 - row, col
+    elif rotation == 180:
+        col, row = 7 - col, 7 - row
+    elif rotation == 270:
+        col, row = row, 7 - col
     return col, row
 
 
@@ -89,7 +110,7 @@ def fen_to_ground_truth(fen):
     return gt
 
 
-def assign_square(x1, y1, x2, y2, board_w, board_h, padding, flip):
+def assign_square(x1, y1, x2, y2, board_w, board_h, padding, flip, rotation=0):
     """Map a box to a square using the box's bottom-center point — identical to
     the inference-time mapping in detect_pieces.detections_to_board."""
     cell_w = (board_w - 2 * padding) / 8
@@ -98,10 +119,10 @@ def assign_square(x1, y1, x2, y2, board_w, board_h, padding, flip):
     cy = y2 - padding
     col = min(7, max(0, int(cx // cell_w)))
     row = min(7, max(0, int(cy // cell_h)))
-    return grid_to_square(col, row, flip)
+    return grid_to_square(col, row, flip, rotation)
 
 
-def build_labels(result, gt, board_w, board_h, padding, flip, synthesize):
+def build_labels(result, gt, board_w, board_h, padding, flip, synthesize, rotation=0):
     """Return (labels, stats). labels: list of (cls_id, xc, yc, w, h, source) in
     normalized [0,1] coords. stats: dict of matched/missing/dropped counts."""
     # Keep the highest-confidence model box per occupied square.
@@ -110,7 +131,7 @@ def build_labels(result, gt, board_w, board_h, padding, flip, synthesize):
     for box in result.boxes:
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         conf = float(box.conf[0])
-        sq = assign_square(x1, y1, x2, y2, board_w, board_h, padding, flip)
+        sq = assign_square(x1, y1, x2, y2, board_w, board_h, padding, flip, rotation)
         if sq not in gt:
             dropped += 1  # detection on an empty square -> false positive, drop
             continue
@@ -135,7 +156,7 @@ def build_labels(result, gt, board_w, board_h, padding, flip, synthesize):
         else:
             bw, bh = 0.8 * cell_w, 0.8 * cell_h
         for sq in missing:
-            col, row = square_to_grid(sq, flip)
+            col, row = square_to_grid(sq, flip, rotation)
             ccx = padding + (col + 0.5) * cell_w
             ccy = padding + (row + 0.5) * cell_h
             labels.append(
@@ -164,7 +185,7 @@ def _norm_box(x1, y1, x2, y2, w, h, cls_name, source):
     return (CLASS_ID[cls_name], clip(xc), clip(yc), clip(bw), clip(bh), source)
 
 
-def draw_overlay(warped, labels, stats, flip, split, captured):
+def draw_overlay(warped, labels, stats, flip, rotation, split, captured):
     """Annotate the warped board with final labels and a status header."""
     out = warped.copy()
     h, w = out.shape[:2]
@@ -181,7 +202,7 @@ def draw_overlay(warped, labels, stats, flip, split, captured):
         )
 
     header = (
-        f"flip:{'ON' if flip else 'OFF'}  split:{split}  saved:{captured}  |  "
+        f"flip:{'ON' if flip else 'OFF'}  rot:{rotation}°  split:{split}  saved:{captured}  |  "
         f"matched {stats['matched']}/{stats['expected']}  "
         f"synth {stats['synth']}  dropped {stats['dropped']}"
     )
@@ -278,11 +299,12 @@ def main():
     print(f"[init] stream opened: {url}")
 
     flip = settings.flip_orientation
+    rotation = 0
     synthesize = not args.no_synthesize
     session = time.strftime("%Y%m%d_%H%M%S")
     captured = 0
 
-    print("\nKeys: [space/s] capture  [f] flip  [n] skip  [ESC/q] quit\n")
+    print("\nKeys: [space/s] capture  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
 
     while True:
         ret, frame = cap.read()
@@ -314,15 +336,18 @@ def main():
         except cv2.error:
             continue
 
+        if rotation:
+            warped = cv2.rotate(warped, _CV2_ROTATIONS[rotation])
+
         result = model(warped, verbose=False, conf=args.propose_conf)[0]
         bh, bw = warped.shape[:2]
         labels, stats = build_labels(
-            result, gt, bw, bh, settings.warp_padding, flip, synthesize
+            result, gt, bw, bh, settings.warp_padding, flip, synthesize, rotation
         )
 
         to_valid = captured % args.val_every == args.val_every - 1
         split = "valid" if to_valid else "train"
-        viz = draw_overlay(warped, labels, stats, flip, split, captured)
+        viz = draw_overlay(warped, labels, stats, flip, rotation, split, captured)
         cv2.imshow("Capture dataset", scale_for_display(viz, settings.display_size))
 
         key = cv2.waitKey(1) & 0xFF
@@ -332,6 +357,9 @@ def main():
             flip = not flip
             print(f"[toggle] flip → {'ON' if flip else 'OFF'} "
                   "(verify square labels match the real board)")
+        elif key == ord("r"):
+            rotation = (rotation + 90) % 360
+            print(f"[toggle] rotation → {rotation}°")
         elif key == ord("n"):
             continue
         elif key in (ord(" "), ord("s")):
