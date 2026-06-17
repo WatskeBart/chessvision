@@ -37,10 +37,6 @@ which [detect_pieces.py](detect_pieces.py) imports:
    `GRANDMASTER_GAMES_DIR`. Recording starts from the standard opening position
    and is toggled live with the `r` key (see toggles below).
 
-[detect_chessboard.py](detect_chessboard.py) is an older alternative that uses a
-Hough-line transform instead of the corner detector; it is still runnable as a
-standalone preview.
-
 ## Setup
 
 Requires Python ≥ 3.13. The project uses [uv](https://docs.astral.sh/uv/):
@@ -83,9 +79,6 @@ uv run view_camera.py
 # Debug board detection using OpenCV's corner detector (corner overlay + warp)
 uv run detect_corners_cv.py
 
-# Debug board detection using the Hough-line approach (alternative)
-uv run detect_chessboard.py
-
 # Full pipeline: detect the board and the pieces on it (press "r" to record)
 uv run detect_pieces.py
 
@@ -115,11 +108,25 @@ Press `ESC` to close any of the OpenCV preview windows.
 | `h` | Show / hide the help overlay |
 | `d` | Toggle detection boxes and labels |
 | `c` | Toggle corner overlay on the raw frame |
+| `k` | Lock / unlock the board transform (calibrate once — see below) |
 | `p` | Toggle printing the board state to stdout |
 | `f` | Toggle board flip orientation (equivalent to `GRANDMASTER_FLIP_ORIENTATION`) |
 | `r` | Start / stop recording the game to `games/game_<timestamp>.{pgn,fen.log}` |
 | `s` | Save current frame as `snapshot_<n>.png` |
 | `ESC` | Quit (finalizes an in-progress recording first) |
+
+#### Calibrate once for reliable tracking (`k`)
+
+`findChessboardCornersSB` needs to see the 7×7 inner grid intersections, which a
+full set of pieces tends to occlude — so per-frame board detection becomes
+unreliable exactly when you want to record. To avoid this, set up the **empty
+board** (or a position that leaves the grid visible), confirm it's detected with
+the `c` overlay, then press `k` to **lock** the board transform. From then on the
+warp is reused every frame and corner detection is skipped entirely, so pieces —
+or a hand passing over the board — can never break tracking. A `BOARD LOCKED`
+marker shows while active; press `k` again to unlock (e.g. if the camera moves).
+The recommended flow is: lock on the empty board, then place the pieces and press
+`r` to record.
 
 ### Capturing a training dataset (`capture_dataset.py`)
 

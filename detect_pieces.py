@@ -17,6 +17,7 @@ TOGGLE_HELP_LINES = [
     "  h  show/hide this help",
     "  d  toggle detection overlay (boxes/labels)",
     "  c  toggle corner overlay on raw frame",
+    "  k  lock/unlock board transform (calibrate once)",
     "  p  toggle printing board state to stdout",
     "  f  toggle board flip orientation",
     "  r  start/stop recording the game (PGN + FEN log)",
@@ -88,13 +89,29 @@ def draw_help_overlay(frame):
 
 
 def draw_corners_overlay(frame, corners, quad):
-    """Draw detected corner points and board quad outline onto a copy of frame."""
+    """Draw detected corner points and the board quad outline on a copy of frame.
+
+    Either may be None: when the transform is locked there are no live corner
+    points, only the cached quad to outline."""
     out = frame.copy()
-    for pt in corners:
-        x, y = int(pt[0][0]), int(pt[0][1])
-        cv2.circle(out, (x, y), 6, (0, 255, 0), -1)
-    pts = quad.reshape((-1, 1, 2)).astype(int)
-    cv2.polylines(out, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
+    if corners is not None:
+        for pt in corners:
+            x, y = int(pt[0][0]), int(pt[0][1])
+            cv2.circle(out, (x, y), 6, (0, 255, 0), -1)
+    if quad is not None:
+        pts = quad.reshape((-1, 1, 2)).astype(int)
+        cv2.polylines(out, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
+    return out
+
+
+def draw_lock_indicator(frame):
+    """Draw a 'BOARD LOCKED' marker (top-right) while the transform is locked."""
+    out = frame.copy()
+    w = out.shape[1]
+    cv2.putText(
+        out, "BOARD LOCKED", (w - 210, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        (0, 255, 255), 2, cv2.LINE_AA,
+    )
     return out
 
 
@@ -123,6 +140,7 @@ def start_recording(start_fen=None):
         fen_path,
         start_fen=start_fen,
         stability_frames=settings.game_stability_frames,
+        debug=settings.game_debug,
     )
     origin = "custom position" if start_fen else "standard opening"
     print(f"[rec] recording started from {origin} -> {pgn_path}")
@@ -183,6 +201,8 @@ def main(start_fen=None):
     snapshot_count = 0
     frame_count = 0
     tracker = None  # GameTracker while recording, else None
+    board_visible = True  # tracks corner-detection state for recording logs
+    locked_quad = None  # cached board quad once calibrated, else detect per frame
 
     while True:
         ret, frame = cap.read()
@@ -196,12 +216,37 @@ def main(start_fen=None):
         if frame_count == 1:
             print("[loop] first frame received", flush=True)
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners = find_corners(gray)
+        # Locate the board. Once calibrated, reuse the locked quad and skip
+        # detection entirely (so pieces occluding the grid can't break tracking);
+        # otherwise detect the corners fresh each frame.
+        if locked_quad is not None:
+            corners = None
+            quad = locked_quad
+        else:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            corners = find_corners(gray)
+            quad = board_quad_from_corners(corners) if corners is not None else None
+
         view = frame
 
-        if corners is not None:
-            quad = board_quad_from_corners(corners)
+        # While recording without a lock, surface when the board can't be located
+        # (the corner detector often fails once pieces occlude the inner grid),
+        # which silently pauses tracking. A locked transform never drops out.
+        if (
+            tracker is not None
+            and locked_quad is None
+            and (quad is not None) != board_visible
+        ):
+            board_visible = quad is not None
+            if board_visible:
+                print("[rec] board reacquired — tracking resumed")
+            else:
+                print(
+                    "[rec] board NOT detected (corners hidden by pieces?) — tracking "
+                    "paused. Tip: press 'k' while the board is visible to lock it."
+                )
+
+        if quad is not None:
             warped = warp_board(frame, quad, padding=settings.warp_padding)
 
             results = model(
@@ -212,9 +257,6 @@ def main(start_fen=None):
                 view = results.plot(font_size=4, line_width=1)
             else:
                 view = warped
-
-            if show_corners:
-                view = draw_corners_overlay(view, corners, quad)
 
             board = detections_to_board(
                 results, warped.shape[1], warped.shape[0], padding=settings.warp_padding
@@ -227,9 +269,15 @@ def main(start_fen=None):
 
             if tracker is not None:
                 tracker.update(board)
-        elif show_corners:
-            # No board found — show raw frame so the user can see what's happening
-            view = frame
+
+        # The corner/quad overlay always belongs on the raw frame (matching
+        # detect_corners_cv.py). corners is None when the transform is locked, so
+        # only the quad outline shows then.
+        if show_corners:
+            view = draw_corners_overlay(frame, corners, quad)
+
+        if locked_quad is not None:
+            view = draw_lock_indicator(view)
 
         if tracker is not None:
             view = draw_record_overlay(view, tracker)
@@ -260,6 +308,23 @@ def main(start_fen=None):
         elif key == ord("c"):
             show_corners = not show_corners
             print(f"[toggle] corner overlay: {'on' if show_corners else 'off'}")
+        elif key == ord("k"):
+            if locked_quad is None:
+                if quad is not None:
+                    locked_quad = quad.copy()
+                    board_visible = True
+                    print(
+                        "[calib] board transform LOCKED — reusing it every frame; "
+                        "corner detection is now skipped. Press 'k' to unlock."
+                    )
+                else:
+                    print(
+                        "[calib] cannot lock: no board detected this frame. "
+                        "Make the board fully visible, then press 'k'."
+                    )
+            else:
+                locked_quad = None
+                print("[calib] board transform unlocked — detecting per frame again.")
         elif key == ord("p"):
             print_board = not print_board
             print(f"[toggle] print board state: {'on' if print_board else 'off'}")

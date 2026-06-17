@@ -61,5 +61,10 @@ class Settings(BaseSettings):
     # Directory where recorded games (a .pgn file and a .fen.log) are written.
     games_dir: Path = Path("games")
 
+    # Verbose game-recording diagnostics: log stability progress and, for each
+    # stable board, how well the current position and the best legal move match
+    # the detection. Use this to find out why moves aren't being recorded.
+    game_debug: bool = False
+
 
 settings = Settings()

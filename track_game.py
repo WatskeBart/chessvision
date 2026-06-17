@@ -76,6 +76,7 @@ class GameTracker:
         start_fen: str | None = None,
         stability_frames: int = 6,
         min_match: int = 48,
+        debug: bool = False,
         log=print,
     ):
         self.board = chess.Board(start_fen) if start_fen else chess.Board()
@@ -86,6 +87,7 @@ class GameTracker:
         # A stable state must match at least this many of the 64 squares of some
         # legal position before we trust it. Filters out garbage detections.
         self.min_match = min_match
+        self.debug = debug
         self._log = log
         self._date = date.today().strftime("%Y.%m.%d")
 
@@ -94,6 +96,7 @@ class GameTracker:
         self._stable_count = 0
         self._evaluated_key = None
         self._verified_start = False
+        self._frames = 0
 
         self.move_count = 0
         self.last_san = None
@@ -109,12 +112,20 @@ class GameTracker:
         `stability_frames` frames, at which point it tries to record a move."""
         observed = self._to_observed(board_dict)
         key = frozenset(observed.items())
+        self._frames += 1
 
         if key == self._stable_key:
             self._stable_count += 1
         else:
             self._stable_key = key
             self._stable_count = 1
+
+        if self.debug and self._frames % 30 == 0:
+            self._log(
+                f"[rec/dbg] frame {self._frames}: {len(observed)} pieces detected, "
+                f"current state stable for {self._stable_count}/"
+                f"{self.stability_frames} frames"
+            )
 
         if self._stable_count == self.stability_frames and key != self._evaluated_key:
             self._evaluated_key = key
@@ -188,9 +199,25 @@ class GameTracker:
         scored.sort(key=lambda item: item[0], reverse=True)
         best_score, best_move = scored[0]
 
+        if self.debug:
+            self._log(
+                f"[rec/dbg] stable board ({len(observed)} pieces): current "
+                f"position matches {baseline}/64, best legal move "
+                f"{self.board.san(best_move)} would match {best_score}/64 "
+                f"(needs > {baseline} and >= {self.min_match})"
+            )
+
         # The board must actually have changed in a way a move explains better
         # than doing nothing, and the match must be plausibly a real position.
         if best_score <= baseline or best_score < self.min_match:
+            if self.debug:
+                reason = (
+                    "no legal move beats keeping the current position"
+                    if best_score <= baseline
+                    else f"best match {best_score}/64 is below min_match "
+                    f"{self.min_match}/64"
+                )
+                self._log(f"[rec/dbg] no move recorded: {reason}")
             return None
 
         # Reject ties: two legal moves explaining the detection equally well
