@@ -217,7 +217,11 @@ def main():
         elif key == ord("f"):
             flip = not flip
             settings.flip_orientation = flip
-            print(f"[toggle] flip orientation: {'on' if flip else 'off'}")
+            corner = "top-left" if flip else "bottom-right"
+            print(
+                f"[toggle] flip orientation: {'on' if flip else 'off'} "
+                f"(A1 at {corner})"
+            )
         elif key == ord("s"):
             path = f"snapshot_{snapshot_count}.png"
             cv2.imwrite(path, view)
