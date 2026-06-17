@@ -112,29 +112,20 @@ def _check_display():
         f"{lib}:" in build_info and "YES" in build_info.split(f"{lib}:")[1].split("\n")[0]
         for lib in ("GTK+", "GTK", "Qt5", "Qt6", "QT")
     )
-    if not has_gui:
-        print(
-            "ERROR: OpenCV has no GUI backend (no GTK/Qt). "
-            "Install system OpenCV instead:\n"
-            "  sudo apt-get install python3-opencv\n"
-            "and remove 'opencv-python' from pyproject.toml.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"[display] DISPLAY={display!r}  OpenCV GUI: ok")
+    gui_status = "ok" if has_gui else "not detected in build info (may still work)"
+    print(f"[display] DISPLAY={display!r}  OpenCV GUI: {gui_status}")
 
 
 def main():
     _check_display()
-    #print("\n".join(TOGGLE_HELP_LINES))
+    print("\n".join(TOGGLE_HELP_LINES))
 
     model_path = settings.pieces_model_path
     print(f"[init] loading model: {model_path}", flush=True)
     if not model_path.exists():
         print(f"ERROR: model not found: {model_path.resolve()}", flush=True)
         raise SystemExit(1)
-    model = YOLO(str(model_path))
+    model = YOLO(str(model_path), task="detect")
     print("[init] model loaded", flush=True)
 
     url = str(settings.stream_url)
