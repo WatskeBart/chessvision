@@ -155,7 +155,10 @@ def main():
     while True:
         ret, frame = cap.read()
         if not ret:
-            break
+            print("[stream] read failed, reconnecting...", flush=True)
+            cap.release()
+            cap = cv2.VideoCapture(url)
+            continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners = find_corners(gray)
@@ -194,6 +197,7 @@ def main():
 
         key = cv2.waitKey(1) & 0xFF
         if key == 27:  # ESC — quit
+            cap.release()
             break
         elif key == ord("h"):
             show_help = not show_help
