@@ -76,8 +76,17 @@ uv run detect_chessboard.py
 # Full pipeline: detect the board and the pieces on it
 uv run detect_pieces.py
 
+# Capture a labelled training dataset from the live stream (see below)
+uv run capture_dataset.py --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
+
+# Auto-label a folder of already-saved frames
+uv run autolabel_images.py --fen "<placement>" --src samples/
+
 # Fine-tune the piece detection model
 uv run train_pieces.py
+
+# Export a trained checkpoint for fast inference on the Pi
+uv run export_model.py
 ```
 
 Press `ESC` to close any of the OpenCV preview windows.
@@ -94,13 +103,71 @@ Press `ESC` to close any of the OpenCV preview windows.
 | `s` | Save current frame as `snapshot_<n>.png` |
 | `ESC` | Quit |
 
+### Capturing a training dataset (`capture_dataset.py`)
+
+Lets you build a YOLO-format dataset from your own pieces without any manual
+annotation. Set up a physical position, run the script with the matching FEN,
+and press `space` to save frames. The script uses the current model for
+bounding-box proposals but replaces each box's class with the ground-truth
+piece from the FEN. Squares the model missed get a synthesized grid-cell box
+so the label set stays complete.
+
+```bash
+uv run capture_dataset.py \
+    --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR" \
+    --infer-every 5   # run inference every 5th frame for a faster display
+```
+
+| Key | Action |
+| --- | --- |
+| `space` / `s` | Save current frame + label file |
+| `e` | Type a new FEN in the terminal (no restart needed) |
+| `v` | Paste FEN from clipboard (e.g. copied from lichess.org/editor) |
+| `m` | Type a UCI move (e.g. `a7a6`) to update the position incrementally |
+| `f` | Toggle board flip orientation |
+| `r` | Rotate board view 90° clockwise (cycles 0→90→180→270) |
+| `n` | Skip to next frame |
+| `ESC` / `q` | Quit |
+
+Every 5th capture (configurable with `--val-every`) goes to the `valid/` split;
+the rest go to `train/`. A `data.yaml` is written once at startup.
+
+After capturing, fine-tune from the existing weights:
+
+```bash
+GRANDMASTER_TRAIN_DATA_YAML=datasets/my-pieces/data.yaml \
+GRANDMASTER_TRAIN_MODEL_PATH=models/pieces.pt \
+uv run train_pieces.py
+```
+
+### Batch auto-labeling (`autolabel_images.py`)
+
+Same idea as `capture_dataset.py` but for a folder of images you have already
+saved (e.g. snapshots from `detect_pieces.py`). All images must show the same
+known position. Pass `--warped` if the images are already top-down warped boards.
+
+```bash
+uv run autolabel_images.py --fen "<placement>" --src samples/
+uv run autolabel_images.py --fen "<placement>" --src warped/ --warped
+```
+
 ### Training
 
-[train_pieces.py](train_pieces.py) fine-tunes the COCO-pretrained nano
-checkpoint on the chess-pieces dataset, validates on the val split, and exports
-the best weights to ONNX for fast inference on the Raspberry Pi (swap to
-`format="ncnn"` for even faster ARM CPU inference). Training artifacts land
-under `runs/detect/`.
+[train_pieces.py](train_pieces.py) fine-tunes a YOLO checkpoint on the
+chess-pieces dataset, validates on the val split, and saves the best weights
+under `models/`.
+
+### Export
+
+[export_model.py](export_model.py) converts a trained `.pt` checkpoint to NCNN
+or ONNX for fast CPU inference on the Raspberry Pi. NCNN is the recommended
+format for ARM.
+
+```bash
+uv run export_model.py                    # ncnn, imgsz 640 (default)
+uv run export_model.py --imgsz 416        # smaller and faster
+uv run export_model.py --format onnx --imgsz 320
+```
 
 ## Hardware setup
 
