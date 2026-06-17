@@ -200,11 +200,13 @@ def main():
 
         try:
             cv2.imshow("Chess piece detection", scale_for_display(view, settings.display_size))
-        except cv2.error as e:
-            print(f"[display] imshow failed: {e}", flush=True)
+        except Exception as e:
+            print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
             break
 
         key = cv2.waitKey(1) & 0xFF
+        if frame_count == 1:
+            print(f"[loop] waitKey returned {key}", flush=True)
         if key == 27:  # ESC — quit
             cap.release()
             break
