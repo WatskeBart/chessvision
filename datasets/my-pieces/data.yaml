@@ -1,6 +1,5 @@
-path: /home/grandmaster/chessvision/datasets/my-pieces
-train: train/images
-val: valid/images
+train: ../train/images
+val: ../valid/images
 nc: 12
 names:
   - black-bishop
