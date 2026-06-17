@@ -18,6 +18,7 @@ Usage:
 
 Keys (in the window):
     space / s  capture the current frame (image + label, into the target split)
+    e          enter a new FEN in the terminal (no restart needed)
     f          toggle board flip orientation (fix mirrored square labels)
     r          rotate board view 90° clockwise (cycles 0→90→180→270→0)
     n          force a fresh stream read (skip ahead)
@@ -339,7 +340,7 @@ def main():
     session = time.strftime("%Y%m%d_%H%M%S")
     captured = 0
 
-    print("\nKeys: [space/s] capture  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
+    print("\nKeys: [space/s] capture  [e] new FEN  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
 
     while True:
         ret, frame = cap.read()
@@ -387,6 +388,14 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key in (27, ord("q")):
             break
+        elif key == ord("e"):
+            new_fen = input("[FEN] Enter new FEN: ").strip()
+            if new_fen:
+                try:
+                    gt = fen_to_ground_truth(new_fen)
+                    print(f"[FEN] updated — {len(gt)} pieces")
+                except Exception as exc:
+                    print(f"[FEN] invalid FEN, keeping previous ({exc})")
         elif key == ord("f"):
             flip = not flip
             print(f"[toggle] flip → {'ON' if flip else 'OFF'} "
