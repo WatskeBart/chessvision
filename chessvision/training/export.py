@@ -5,15 +5,15 @@ a lot. NCNN is the fastest backend on ARM CPUs; a smaller --imgsz trades a littl
 accuracy for a large speedup. Export a couple of sizes and benchmark on the Pi.
 
 Usage:
-    uv run export_model.py                          # ncnn, imgsz 640
-    uv run export_model.py --imgsz 416              # smaller/faster
-    uv run export_model.py --format onnx --imgsz 320
+    uv run gm-export                          # ncnn, imgsz 640
+    uv run gm-export --imgsz 416              # smaller/faster
+    uv run gm-export --format onnx --imgsz 320
 """
 
 import argparse
 from pathlib import Path
 
-from settings import settings
+from chessvision.settings import settings
 
 
 def parse_args():

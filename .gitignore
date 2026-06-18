@@ -1,6 +1,3 @@
-# Recorded games (detect_pieces.py "r" toggle / track_game.py)
-games/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -219,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude settings
+.claude/

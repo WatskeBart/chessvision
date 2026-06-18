@@ -12,6 +12,23 @@ dependencies = [
     "ultralytics>=8.4.67",
 ]
 
+# Console scripts: run any of these with `uv run <name>` (e.g. `uv run gm-detect`).
+[project.scripts]
+gm-detect = "chessvision.app.detect:cli"        # live board + piece detection / recording
+gm-view = "chessvision.app.view_camera:main"    # raw camera stream preview
+gm-corners = "chessvision.core.board:main"      # board-detection debug (corners + warp)
+gm-capture = "chessvision.training.capture_dataset:main"   # capture a labelled dataset
+gm-autolabel = "chessvision.training.autolabel_images:main"  # auto-label saved frames
+gm-train = "chessvision.training.train:main"    # fine-tune the piece model
+gm-export = "chessvision.training.export:main"  # export weights (ncnn/onnx)
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["chessvision"]
+
 [dependency-groups]
 dev = [
     "ruff>=0.14.0",
@@ -36,6 +53,8 @@ torchvision = [
 [tool.ruff]
 target-version = "py313"
 line-length = 88
+# Generated (ncnn export), training outputs, and scratch notebooks aren't source.
+extend-exclude = ["jupyter_notebooks", "models", "runs", "datasets"]
 
 [tool.ruff.lint]
 select = [

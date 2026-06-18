@@ -14,7 +14,7 @@ Capture many frames of each position under varied lighting/angles, change the
 physical position, and rerun. Fine-tune from models/pieces.pt on the result.
 
 Usage:
-    uv run capture_dataset.py --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
+    uv run gm-capture --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
 
 Keys (in the window):
     space / s  capture the current frame (image + label, into the target split)
@@ -35,9 +35,9 @@ import chess
 import cv2
 import numpy as np
 
-from detect_corners_cv import board_quad_from_corners, find_corners, warp_board
-from detect_pieces import scale_for_display
-from settings import settings
+from chessvision.core.board import board_quad_from_corners, find_corners, warp_board
+from chessvision.core.display import scale_for_display
+from chessvision.settings import settings
 
 # Canonical class order — MUST match datasets/chess-pieces/data.yaml so class
 # IDs stay aligned when fine-tuning from the existing models/pieces.pt weights.

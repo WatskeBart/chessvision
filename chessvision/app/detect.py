@@ -6,10 +6,11 @@ import chess
 import cv2
 from ultralytics import YOLO
 
-from detect_corners_cv import board_quad_from_corners, find_corners, warp_board
-from detect_occupancy import changed_squares, square_change_scores
-from settings import settings
-from track_game import GameTracker, label_to_symbol, normalize_fen
+from chessvision.core.board import board_quad_from_corners, find_corners, warp_board
+from chessvision.core.display import scale_for_display
+from chessvision.core.occupancy import changed_squares, square_change_scores
+from chessvision.core.tracking import GameTracker, label_to_symbol, normalize_fen
+from chessvision.settings import settings
 
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
@@ -82,17 +83,6 @@ def detections_to_board(result, board_w, board_h, padding=0):
             board[sq] = (label, conf)
 
     return board
-
-
-def scale_for_display(image, target_size):
-    """Upscale (never downscale) a square-ish image so it's easy to view,
-    preserving aspect ratio."""
-    h, w = image.shape[:2]
-    scale = target_size / max(h, w)
-    if scale <= 1:
-        return image
-    new_w, new_h = int(w * scale), int(h * scale)
-    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
 
 def draw_help_overlay(frame):
@@ -564,7 +554,8 @@ def parse_args():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def cli():
+    """Console-script entry point (gm-detect)."""
     args = parse_args()
     start_fen = None
     if args.from_fen:
@@ -574,3 +565,7 @@ if __name__ == "__main__":
             print(f"ERROR: invalid --from-fen: {e}", file=sys.stderr)
             raise SystemExit(2) from None
     main(start_fen, detection_mode=args.detect)
+
+
+if __name__ == "__main__":
+    cli()

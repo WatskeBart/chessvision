@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from settings import settings
+from chessvision.settings import settings
 
 # A standard 8×8 board has 7×7 internal corner intersections.
 INNER_CORNERS = (7, 7)

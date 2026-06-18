@@ -1,251 +1,84 @@
 # chessvision aka Grandmaster Yolo
 
 Track a live chess game from a single overhead camera. A phone streams the board
-over MJPEG, the pipeline finds the board, perspective-warps it to a top-down
-view, and a YOLO model fine-tuned on chess pieces reports what sits on each
-square.
+over MJPEG; the pipeline finds the board, perspective-warps it to a top-down
+view, works out the move that was played, and records the game to PGN.
 
-## How it works
+## Quickstart
 
-The pipeline runs per frame in [detect_pieces.py](detect_pieces.py). Board
-detection and warping live in [detect_corners_cv.py](detect_corners_cv.py),
-which [detect_pieces.py](detect_pieces.py) imports:
-
-1. **Find the board** — `find_corners()` uses OpenCV's `findChessboardCornersSB`
-   to locate the 7×7 internal grid intersections. This newer variant handles poor
-   lighting and partial occlusion better than the classic detector; it falls back
-   to `findChessboardCorners` + sub-pixel refinement if needed.
-2. **Extrapolate the outer quad** — `board_quad_from_corners()` estimates
-   one-square step vectors from the corner grid and extrapolates outward to the
-   board's actual edge.
-3. **Warp** — `warp_board()` perspective-warps the detected quad to an 800 × 800
-   top-down view.
-4. **Detect pieces** — a YOLO model (12 classes: 6 piece types × {white, black})
-   runs on the warped view.
-5. **Map to squares** — `detections_to_board()` assigns each detection to a
-   square using the box's bottom-center point (a piece's base sits on its
-   square), keeping the highest-confidence detection per square.
-6. **Track the game** — [track_game.py](track_game.py)'s `GameTracker` turns the
-   per-frame square map into a recorded game. Detections flicker, so a board
-   state is only trusted once it has been stable for several frames
-   (`GRANDMASTER_GAME_STABILITY_FRAMES`). When a stable state differs from the
-   current position, the tracker asks [python-chess](https://python-chess.readthedocs.io/)
-   for the legal move whose *resulting* placement best matches the detection —
-   which makes captures, castling, en passant and promotion fall out
-   automatically, and ignores detections that match no legal move. Each accepted
-   move is written to a `.pgn` file and a human-readable `.fen.log` in
-   `GRANDMASTER_GAMES_DIR`. Recording starts from the standard opening position
-   and is toggled live with the `r` key (see toggles below).
-
-## Setup
-
-Requires Python ≥ 3.13. The project uses [uv](https://docs.astral.sh/uv/):
+Requires Python ≥ 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
+# 1. Install (creates the venv, deps, and the `gm-*` commands)
 uv sync
+
+# 2. Point at your camera stream (optional — defaults to the reference rig).
+#    Either export it or put it in a .env file:
+echo 'GRANDMASTER_STREAM_URL=http://<phone-ip>:<port>/stream' >> .env
+
+# 3. Check the camera, then run the app
+uv run gm-view        # raw stream preview — press ESC to close
+uv run gm-detect      # the full pipeline
 ```
 
-## Configuration
+`gm-detect` opens a window showing the warped board with `a1`/`h8` corner
+markers. If the markers don't match your board, press `o` (rotate) / `f` (flip)
+until they line up — see [docs/configuration.md](docs/configuration.md#board-orientation).
 
-Settings are defined in [settings.py](settings.py) and read from a `.env` file
-(all keys are prefixed `GRANDMASTER_`). Copy the example and edit it:
+## Recording a game
+
+Recording is most reliable when the board transform is **locked** first (a full
+set of pieces hides the grid lines the detector needs):
+
+1. Set up the **empty** board and confirm it's detected (`c` shows the corners).
+2. Press **`k`** to lock the transform (a `BOARD LOCKED` marker appears).
+3. Place the pieces in the starting position, then press **`r`** to record.
+4. Play. Each accepted move is written live to
+   `games/game_<timestamp>.pgn` and `.fen.log`.
+5. Press **`r`** again (or `ESC`) to stop and finalize.
+
+To record from a mid-game position, pass a FEN (full, or just the placement
+field):
 
 ```bash
-cp .env.example .env
+uv run gm-detect --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 2 3"
 ```
 
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `GRANDMASTER_STREAM_URL` | `http://10.42.0.177:4444/stream` | Camera stream URL to read frames from |
-| `GRANDMASTER_PIECES_MODEL_PATH` | `models/pieces_ncnn_model` | YOLO model for inference. Accepts a single-file weight (`.pt`/`.onnx`) **or** an NCNN export, which is a *directory* — point at the folder (e.g. `models/pieces_ncnn_model/`), not a file inside it |
-| `GRANDMASTER_TRAIN_MODEL_PATH` | `yolo26n.pt` | Base checkpoint to fine-tune from |
-| `GRANDMASTER_TRAIN_DATA_YAML` | `datasets/chess-pieces/data.yaml` | Training dataset (YOLO format) |
-| `GRANDMASTER_TRAIN_EPOCHS` | `100` | Training epochs |
-| `GRANDMASTER_TRAIN_IMGSZ` | `640` | Training image size |
-| `GRANDMASTER_TRAIN_PATIENCE` | `20` | Early-stopping patience |
-| `GRANDMASTER_TRAIN_DEVICE` | `0` | GPU index for training |
-| `GRANDMASTER_FLIP_ORIENTATION` | `true` | Set `true` when the warped top-left square is a1; leave `false` when it's a8 |
-| `GRANDMASTER_PIECES_CONF_THRESHOLD` | `0.4` | Minimum YOLO confidence to accept a piece detection; raise (e.g. 0.5–0.7) to suppress false positives |
-| `GRANDMASTER_DISPLAY_SIZE` | `800` | Minimum side length (px) to upscale the displayed board to |
-| `GRANDMASTER_GAME_STABILITY_FRAMES` | `6` | Consecutive identical frames before a board state is accepted and a move recorded |
-| `GRANDMASTER_GAMES_DIR` | `games` | Directory where recorded games (`.pgn` + `.fen.log`) are written |
-
-## Usage
-
-```bash
-# Preview the raw camera stream
-uv run view_camera.py
-
-# Debug board detection using OpenCV's corner detector (corner overlay + warp)
-uv run detect_corners_cv.py
-
-# Full pipeline: detect the board and the pieces on it (press "r" to record)
-uv run detect_pieces.py
-
-# Record starting from a mid-game position instead of the standard opening.
-# Accepts a full FEN, or just the piece-placement field (White assumed to move).
-uv run detect_pieces.py --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 2 3"
-
-# Capture a labelled training dataset from the live stream (see below)
-uv run capture_dataset.py --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
-
-# Auto-label a folder of already-saved frames
-uv run autolabel_images.py --fen "<placement>" --src samples/
-
-# Fine-tune the piece detection model
-uv run train_pieces.py
-
-# Export a trained checkpoint for fast inference on the Pi
-uv run export_model.py
-```
-
-Press `ESC` to close any of the OpenCV preview windows.
-
-### Keyboard toggles in `detect_pieces.py`
+### Keyboard toggles (in `gm-detect`)
 
 | Key | Action |
 | --- | --- |
 | `h` | Show / hide the help overlay |
-| `d` | Toggle detection boxes and labels |
-| `c` | Toggle corner overlay on the raw frame |
-| `k` | Lock / unlock the board transform (calibrate once — see below) |
+| `d` | Toggle the detection overlay (boxes / changed-square outlines) |
+| `c` | Toggle the corner overlay on the raw frame |
+| `k` | Lock / unlock the board transform (calibrate once) |
+| `m` | Switch detection mode (`diff` ⇄ `model`) |
+| `v` | Validate the current board against the model (`diff` mode) |
 | `p` | Toggle printing the board state to stdout |
-| `f` | Toggle board flip orientation (equivalent to `GRANDMASTER_FLIP_ORIENTATION`) |
-| `r` | Start / stop recording the game to `games/game_<timestamp>.{pgn,fen.log}` |
-| `s` | Save current frame as `snapshot_<n>.png` |
+| `o` | Rotate the square mapping 90° (view stays as the raw feed) |
+| `f` | Toggle board flip orientation |
+| `r` | Start / stop recording the game |
+| `s` | Save the current frame as `snapshot_<n>.png` |
 | `ESC` | Quit (finalizes an in-progress recording first) |
 
-#### Calibrate once for reliable tracking (`k`)
+## Commands
 
-`findChessboardCornersSB` needs to see the 7×7 inner grid intersections, which a
-full set of pieces tends to occlude — so per-frame board detection becomes
-unreliable exactly when you want to record. To avoid this, set up the **empty
-board** (or a position that leaves the grid visible), confirm it's detected with
-the `c` overlay, then press `k` to **lock** the board transform. From then on the
-warp is reused every frame and corner detection is skipped entirely, so pieces —
-or a hand passing over the board — can never break tracking. A `BOARD LOCKED`
-marker shows while active; press `k` again to unlock (e.g. if the camera moves).
-The recommended flow is: lock on the empty board, then place the pieces and press
-`r` to record.
+All commands run with `uv run <name>` from the repo root:
 
-### Capturing a training dataset (`capture_dataset.py`)
-
-Lets you build a YOLO-format dataset from your own pieces without any manual
-annotation. Set up a physical position, run the script with the matching FEN,
-and press `space` to save frames. The script uses the current model for
-bounding-box proposals but replaces each box's class with the ground-truth
-piece from the FEN. Squares the model missed get a synthesized grid-cell box
-so the label set stays complete.
-
-```bash
-uv run capture_dataset.py \
-    --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR" \
-    --infer-every 5   # run inference every 5th frame for a faster display
-```
-
-| Key | Action |
+| Command | What it does |
 | --- | --- |
-| `space` / `s` | Save current frame + label file |
-| `e` | Type a new FEN in the terminal (no restart needed) |
-| `v` | Paste FEN from clipboard (e.g. copied from lichess.org/editor) |
-| `m` | Type a UCI move (e.g. `a7a6`) to update the position incrementally |
-| `f` | Toggle board flip orientation |
-| `r` | Rotate board view 90° clockwise (cycles 0→90→180→270) |
-| `n` | Skip to next frame |
-| `ESC` / `q` | Quit |
+| `gm-detect` | Live board + piece detection and game recording (the main app) |
+| `gm-view` | Preview the raw camera stream |
+| `gm-corners` | Board-detection debug (corner overlay + warp) |
+| `gm-capture` | Capture a labelled training dataset from the stream |
+| `gm-autolabel` | Auto-label a folder of already-saved frames |
+| `gm-train` | Fine-tune the piece-detection model |
+| `gm-export` | Export trained weights to NCNN/ONNX |
 
-Every 5th capture (configurable with `--val-every`) goes to the `valid/` split;
-the rest go to `train/`. A `data.yaml` is written once at startup.
+## Documentation
 
-> **Tip:** Use [lichess.org/editor](https://lichess.org/editor) to build positions
-> fast. Drag pieces onto the board, then copy the FEN (it updates live in the URL
-> and the FEN box). Press `v` in `capture_dataset.py` to paste it straight from
-> the clipboard — no retyping. To cover many positions quickly, set up one
-> arrangement on lichess, paste it with `v`, capture a few frames, then tweak the
-> board and repeat. This lets you sweep through a wide variety of piece layouts
-> in minutes.
-
-After capturing, fine-tune from the existing weights:
-
-```bash
-GRANDMASTER_TRAIN_DATA_YAML=datasets/my-pieces/data.yaml \
-GRANDMASTER_TRAIN_MODEL_PATH=models/pieces.pt \
-uv run train_pieces.py
-```
-
-### Batch auto-labeling (`autolabel_images.py`)
-
-Same idea as `capture_dataset.py` but for a folder of images you have already
-saved (e.g. snapshots from `detect_pieces.py`). All images must show the same
-known position. Pass `--warped` if the images are already top-down warped boards.
-
-```bash
-uv run autolabel_images.py --fen "<placement>" --src samples/
-uv run autolabel_images.py --fen "<placement>" --src warped/ --warped
-```
-
-### Training
-
-[train_pieces.py](train_pieces.py) fine-tunes a YOLO checkpoint on the
-chess-pieces dataset, validates on the val split, and saves the best weights
-under `models/`.
-
-### Export
-
-[export_model.py](export_model.py) converts a trained `.pt` checkpoint to NCNN
-or ONNX for fast CPU inference on the Raspberry Pi. NCNN is the recommended
-format for ARM.
-
-```bash
-uv run export_model.py                    # ncnn, imgsz 640 (default)
-uv run export_model.py --imgsz 416        # smaller and faster
-uv run export_model.py --format onnx --imgsz 320
-```
-
-To use an exported model, point `GRANDMASTER_PIECES_MODEL_PATH` at the result.
-ONNX is a single file (`models/pieces.onnx`); **NCNN is a directory** —
-`export_model.py` writes `models/pieces_ncnn_model/` containing
-`model.ncnn.param`, `model.ncnn.bin` and `metadata.yaml`. Set the env var to the
-directory itself, not a file inside it:
-
-```bash
-GRANDMASTER_PIECES_MODEL_PATH=models/pieces_ncnn_model uv run detect_pieces.py
-```
-
-The `ncnn` runtime is a project dependency (installed by `uv sync`), so NCNN
-models load without any extra setup.
-
-## Hardware setup
-
-```mermaid
-flowchart LR
-    Internet(("🌐 Internet"))
-    Laptop["💻 Laptop<br/>shares its Wi-Fi Internet<br/>connection (acts as router)"]
-
-    subgraph netA["Network A — RPi Wi-Fi hotspot"]
-        direction LR
-        Phone["📱 Android phone<br/>IP camera app<br/>(on tripod above board)"]
-        RPi["🖥️ Raspberry Pi 4B<br/>hosts the hotspot<br/>runs the vision pipeline"]
-        Phone -- "Wi-Fi" --> RPi
-    end
-
-    Internet -- "Wi-Fi" --> Laptop
-    Laptop -- "Ethernet (Internet sharing)" --> RPi
-```
-
-| Component | Role |
-| --- | --- |
-| Android phone | Mounted on a tripod above the board, streams video via an IP camera app |
-| Raspberry Pi 4B | Hosts its own Wi-Fi hotspot for the phone to join; runs the vision pipeline (`detect_pieces.py`) |
-| Laptop | Connected to the RPi over Ethernet; shares its own Wi-Fi Internet connection with the RPi (acts as a router) |
-| Internet | Reached by the laptop over Wi-Fi, then passed through to the RPi via Ethernet |
-
-## Proof of Concepts
-
-### POC 1
-
-Detect the chessboard
-
-### POC 2
-
-Detect individual pieces and track them
+- [Architecture](docs/architecture.md) — how the pipeline works, module map, data flow
+- [Configuration](docs/configuration.md) — every setting and board orientation
+- [Training & datasets](docs/training.md) — capture, auto-label, train, export
+- [Hardware setup](docs/hardware.md) — the phone / Raspberry Pi / laptop rig
+- [Development](docs/development.md) — layout, console scripts, linting, conventions

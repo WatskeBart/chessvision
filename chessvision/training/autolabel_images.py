@@ -9,7 +9,7 @@ the board is warped first. Pass --warped if the images are already top-down
 warped boards (e.g. saved with detect_pieces' snapshot key).
 
 Usage:
-    uv run autolabel_images.py --fen "<placement>" --src samples
+    uv run gm-autolabel --fen "<placement>" --src samples
 """
 
 import argparse
@@ -17,15 +17,15 @@ from pathlib import Path
 
 import cv2
 
-from capture_dataset import (
+from chessvision.core.board import board_quad_from_corners, find_corners, warp_board
+from chessvision.settings import settings
+from chessvision.training.capture_dataset import (
     build_labels,
     draw_overlay,
     fen_to_ground_truth,
     write_capture,
     write_data_yaml,
 )
-from detect_corners_cv import board_quad_from_corners, find_corners, warp_board
-from settings import settings
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 

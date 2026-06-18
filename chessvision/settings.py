@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+
 from pydantic import AnyUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
