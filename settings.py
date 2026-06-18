@@ -16,8 +16,11 @@ class Settings(BaseSettings):
     stream_url: AnyUrl = AnyUrl("http://10.42.0.177:4444/stream")
 
     # Path to a YOLO model fine-tuned on chess pieces (12 classes: 6 piece
-    # types x {white, black}), used for inference in detect_pieces.py.
-    pieces_model_path: Path = Path("models/pieces.onnx")
+    # types x {white, black}), used for inference in detect_pieces.py. Accepts
+    # any format Ultralytics can load: a .pt/.onnx file, or an NCNN export, which
+    # is a *directory* (models/pieces_ncnn_model/ holding model.ncnn.param +
+    # model.ncnn.bin + metadata.yaml).
+    pieces_model_path: Path = Path("models/pieces_ncnn_model")
 
     # Base checkpoint to fine-tune from in train_pieces.py. yolo26n.pt is the
     # COCO-pretrained nano model - much faster to converge than from scratch.
@@ -33,16 +36,21 @@ class Settings(BaseSettings):
     # GPU index (e.g. 0) if you have an NVIDIA/CUDA GPU, or "cpu" to train on CPU.
     train_device: int | Literal["cpu"] = 0
 
-    # Clockwise rotation (0/90/180/270 degrees) applied to the warped board
-    # before mapping pieces to squares. Use this when the board sits under the
-    # camera turned a quarter/three-quarter turn (files and ranks swapped).
-    # Cycle at runtime with 'o'. flip_orientation handles the remaining 180°.
+    # Clockwise rotation (0/90/180/270 degrees) applied when mapping board cells
+    # to square names — as a coordinate rotation, NOT to the displayed image. The
+    # on-screen view is left in the raw camera-feed orientation; only the square
+    # identification is rotated, so the board reads correctly without rotating the
+    # picture. Cycle at runtime with 'o'. flip_orientation adds the extra 180°.
+    # Default 90: the raw feed shows a1 in the bottom-right, so a 90° mapping makes
+    # the bottom-right cell read as a1 (and the top-left as h8).
     board_rotation: Literal[0, 90, 180, 270] = 90
 
-    # If the warped board's top-left corner corresponds to square a8 from the
-    # camera's point of view, leave this False. Flip to True if your camera/
-    # board orientation puts a1 in the top-left instead.
-    flip_orientation: bool = True
+    # Extra 180° turn of the square-name mapping, on top of board_rotation. Toggle
+    # at runtime with 'f'. Leave False unless the board still reads 180° rotated
+    # after setting board_rotation.
+    # Default False: with board_rotation=90 the raw feed already reads correctly
+    # (bottom-right = a1, top-left = h8).
+    flip_orientation: bool = False
 
     # Minimum confidence for a piece detection to be accepted. Raise this to
     # suppress false positives on empty squares (e.g. 0.5–0.7).
@@ -79,13 +87,23 @@ class Settings(BaseSettings):
     #             known start position and a locked board ('k'); the model stays
     #             loaded only as a manual re-sync check ('v'). Toggle at runtime
     #             with 'm'.
-    detection_mode: Literal["model", "diff"] = "model"
+    detection_mode: Literal["model", "diff"] = "diff"
+
+    # Whether the detection overlay (piece boxes/labels in model mode, changed-
+    # square outlines in diff mode) is drawn on the view at startup. Toggle at
+    # runtime with 'd'. Default False: start with no overlay shown (detection
+    # still runs; only its drawing is hidden).
+    show_detections: bool = False
 
     # "diff" mode tuning ---------------------------------------------------
     # Mean absolute grayscale difference (0-255) within a square's centre, above
     # which the square counts as "changed" vs the reference. Raise to ignore
     # shadows/lighting, lower if real moves (esp. low-contrast ones) are missed.
-    diff_change_threshold: float = 18.0
+    # Measured static-board noise floor is ~2; 18 was high enough that a light
+    # piece leaving a light square (e.g. a pawn's source square on h2->h3) didn't
+    # register, so the 2-square move showed only its destination and matched no
+    # legal move. 8 stays ~4x above the noise floor.
+    diff_change_threshold: float = 8.0
 
     # Central fraction of each square sampled for change (avoids grid lines and
     # tall neighbouring pieces leaning over the boundary).

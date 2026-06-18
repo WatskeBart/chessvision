@@ -14,20 +14,20 @@ from track_game import GameTracker, label_to_symbol, normalize_fen
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
 
-_ROTATIONS = {
-    90: cv2.ROTATE_90_CLOCKWISE,
-    180: cv2.ROTATE_180,
-    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
-}
+def rotate_cell(col, row, degrees, n=8):
+    """Rotate a cell index within an n×n grid clockwise by 0/90/180/270°.
 
-
-def rotate_board(image, degrees):
-    """Rotate a (square) warped board clockwise by 0/90/180/270 degrees.
-
-    The board region is centred and square, so a quarter-turn maps cells to
-    cells cleanly and the padding stays symmetric."""
-    code = _ROTATIONS.get(degrees % 360)
-    return image if code is None else cv2.rotate(image, code)
+    Matches how rotating the image clockwise would move that cell, but works on
+    indices so the orientation can be corrected in the square mapping while the
+    displayed board is left in the raw camera-feed orientation."""
+    d = degrees % 360
+    if d == 90:
+        return n - 1 - row, col
+    if d == 180:
+        return n - 1 - col, n - 1 - row
+    if d == 270:
+        return row, n - 1 - col
+    return col, row
 
 TOGGLE_HELP_LINES = [
     "Keyboard toggles:",
@@ -38,7 +38,7 @@ TOGGLE_HELP_LINES = [
     "  m  switch detection mode (model <-> diff/subtraction)",
     "  v  validate current board against the model (diff mode)",
     "  p  toggle printing board state to stdout",
-    "  o  rotate board orientation 90 (fix sideways camera)",
+    "  o  rotate square mapping 90 (view stays as raw feed)",
     "  f  toggle board flip orientation",
     "  r  start/stop recording the game (PGN + FEN log)",
     "  s  save current frame to snapshot_<n>.png",
@@ -47,6 +47,12 @@ TOGGLE_HELP_LINES = [
 
 
 def square_name(col, row):
+    """Map a cell of the (un-rotated) warped board grid to its square name.
+
+    board_rotation is applied here as a coordinate rotation rather than by
+    rotating the displayed image, so the on-screen view matches the raw camera
+    feed while squares are still identified correctly. flip adds the 180° turn."""
+    col, row = rotate_cell(col, row, settings.board_rotation)
     if settings.flip_orientation:
         col, row = 7 - col, 7 - row
     return f"{FILES[col]}{RANKS[row]}"
@@ -132,6 +138,37 @@ def draw_lock_indicator(frame):
         out, "BOARD LOCKED", (w - 210, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
         (0, 255, 255), 2, cv2.LINE_AA,
     )
+    return out
+
+
+# Grid corner cells -> (text anchored left?, anchored top?) on the displayed view.
+_VIEW_CORNERS = {
+    (0, 0): (True, True),    # top-left
+    (7, 0): (False, True),   # top-right
+    (0, 7): (True, False),   # bottom-left
+    (7, 7): (False, False),  # bottom-right
+}
+
+
+def draw_corner_markers(frame, labels=("a1", "h8")):
+    """Label where the given squares sit on the board, at their live corners.
+
+    Names come from square_name, so the markers track the current rotation/flip
+    and stay correct even though the view is left in the raw-feed orientation
+    (e.g. with the default mapping, a1 is bottom-right and h8 is top-left)."""
+    out = frame.copy()
+    h, w = out.shape[:2]
+    font, scale, thickness, m = cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2, 12
+    wanted = {lbl.lower() for lbl in labels}
+    for (col, row), (left, top) in _VIEW_CORNERS.items():
+        name = square_name(col, row)
+        if name not in wanted:
+            continue
+        text = name.upper()
+        (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+        x = m if left else w - m - tw
+        y = m + th if top else h - m
+        cv2.putText(out, text, (x, y), font, scale, (0, 255, 0), thickness, cv2.LINE_AA)
     return out
 
 
@@ -282,12 +319,11 @@ def main(start_fen=None, detection_mode=None):
         raise SystemExit(1)
     print("[init] stream opened", flush=True)
 
-    show_detections = True
+    show_detections = settings.show_detections
     show_corners = False
     show_help = False
     print_board = False
     flip = settings.flip_orientation
-    board_rotation = settings.board_rotation
     snapshot_count = 0
     frame_count = 0
     tracker = None  # GameTracker while recording, else None
@@ -340,8 +376,6 @@ def main(start_fen=None, detection_mode=None):
         warped = None  # kept in scope for the 'v' validate handler
         if quad is not None:
             warped = warp_board(frame, quad, padding=settings.warp_padding)
-            if board_rotation:
-                warped = rotate_board(warped, board_rotation)
 
             if detection_mode == "diff":
                 if reference_warped is None:
@@ -405,6 +439,7 @@ def main(start_fen=None, detection_mode=None):
             view = draw_record_overlay(view, tracker)
 
         view = draw_mode_indicator(view, detection_mode)
+        view = draw_corner_markers(view)
 
         if show_help:
             view = draw_help_overlay(view)
@@ -453,9 +488,8 @@ def main(start_fen=None, detection_mode=None):
             print_board = not print_board
             print(f"[toggle] print board state: {'on' if print_board else 'off'}")
         elif key == ord("o"):
-            board_rotation = (board_rotation + 90) % 360
-            reference_warped = None  # orientation changed; re-anchor diff reference
-            print(f"[toggle] board rotation: {board_rotation}°")
+            settings.board_rotation = (settings.board_rotation + 90) % 360
+            print(f"[toggle] square mapping rotation: {settings.board_rotation}°")
         elif key == ord("f"):
             flip = not flip
             settings.flip_orientation = flip

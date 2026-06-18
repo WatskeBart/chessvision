@@ -57,7 +57,7 @@ cp .env.example .env
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `GRANDMASTER_STREAM_URL` | `http://10.42.0.177:4444/stream` | Camera stream URL to read frames from |
-| `GRANDMASTER_PIECES_MODEL_PATH` | `runs/detect/train/weights/best.pt` | YOLO model fine-tuned on chess pieces (inference) |
+| `GRANDMASTER_PIECES_MODEL_PATH` | `models/pieces_ncnn_model` | YOLO model for inference. Accepts a single-file weight (`.pt`/`.onnx`) **or** an NCNN export, which is a *directory* — point at the folder (e.g. `models/pieces_ncnn_model/`), not a file inside it |
 | `GRANDMASTER_TRAIN_MODEL_PATH` | `yolo26n.pt` | Base checkpoint to fine-tune from |
 | `GRANDMASTER_TRAIN_DATA_YAML` | `datasets/chess-pieces/data.yaml` | Training dataset (YOLO format) |
 | `GRANDMASTER_TRAIN_EPOCHS` | `100` | Training epochs |
@@ -201,6 +201,19 @@ uv run export_model.py                    # ncnn, imgsz 640 (default)
 uv run export_model.py --imgsz 416        # smaller and faster
 uv run export_model.py --format onnx --imgsz 320
 ```
+
+To use an exported model, point `GRANDMASTER_PIECES_MODEL_PATH` at the result.
+ONNX is a single file (`models/pieces.onnx`); **NCNN is a directory** —
+`export_model.py` writes `models/pieces_ncnn_model/` containing
+`model.ncnn.param`, `model.ncnn.bin` and `metadata.yaml`. Set the env var to the
+directory itself, not a file inside it:
+
+```bash
+GRANDMASTER_PIECES_MODEL_PATH=models/pieces_ncnn_model uv run detect_pieces.py
+```
+
+The `ncnn` runtime is a project dependency (installed by `uv sync`), so NCNN
+models load without any extra setup.
 
 ## Hardware setup
 
