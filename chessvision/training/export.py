@@ -21,19 +21,26 @@ def parse_args():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        "--weights", type=Path, default=Path("models/pieces.pt"),
+        "--weights",
+        type=Path,
+        default=Path("models/pieces.pt"),
         help="Trained .pt checkpoint to export.",
     )
     p.add_argument(
-        "--format", default="ncnn", choices=["ncnn", "onnx"],
+        "--format",
+        default="ncnn",
+        choices=["ncnn", "onnx"],
         help="ncnn = fastest on ARM CPU (recommended for the Pi).",
     )
     p.add_argument(
-        "--imgsz", type=int, default=640,
+        "--imgsz",
+        type=int,
+        default=640,
         help="Inference input size. Smaller = faster on the Pi (try 416 or 320).",
     )
     p.add_argument(
-        "--half", action="store_true",
+        "--half",
+        action="store_true",
         help="FP16 export (onnx only; ignored for ncnn CPU).",
     )
     return p.parse_args()

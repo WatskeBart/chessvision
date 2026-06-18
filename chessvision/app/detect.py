@@ -15,6 +15,7 @@ from chessvision.settings import settings
 FILES = "abcdefgh"
 RANKS = "87654321"  # rank 8 first, matches a top-left = a8 orientation
 
+
 def rotate_cell(col, row, degrees, n=8):
     """Rotate a cell index within an n×n grid clockwise by 0/90/180/270°.
 
@@ -29,6 +30,7 @@ def rotate_cell(col, row, degrees, n=8):
     if d == 270:
         return row, n - 1 - col
     return col, row
+
 
 TOGGLE_HELP_LINES = [
     "Keyboard toggles:",
@@ -125,17 +127,23 @@ def draw_lock_indicator(frame):
     out = frame.copy()
     w = out.shape[1]
     cv2.putText(
-        out, "BOARD LOCKED", (w - 210, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-        (0, 255, 255), 2, cv2.LINE_AA,
+        out,
+        "BOARD LOCKED",
+        (w - 210, 28),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 255),
+        2,
+        cv2.LINE_AA,
     )
     return out
 
 
 # Grid corner cells -> (text anchored left?, anchored top?) on the displayed view.
 _VIEW_CORNERS = {
-    (0, 0): (True, True),    # top-left
-    (7, 0): (False, True),   # top-right
-    (0, 7): (True, False),   # bottom-left
+    (0, 0): (True, True),  # top-left
+    (7, 0): (False, True),  # top-right
+    (0, 7): (True, False),  # bottom-left
     (7, 7): (False, False),  # bottom-right
 }
 
@@ -171,8 +179,14 @@ def draw_record_overlay(frame, tracker):
         text += f"  last: {tracker.last_san}"
     cv2.circle(out, (18, h - 16), 7, (0, 0, 255), -1)
     cv2.putText(
-        out, text, (34, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-        (0, 0, 255), 2, cv2.LINE_AA,
+        out,
+        text,
+        (34, h - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 0, 255),
+        2,
+        cv2.LINE_AA,
     )
     return out
 
@@ -197,8 +211,14 @@ def draw_mode_indicator(frame, mode):
     out = frame.copy()
     h = out.shape[0]
     cv2.putText(
-        out, f"mode: {mode}", (10, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-        (0, 220, 220), 2, cv2.LINE_AA,
+        out,
+        f"mode: {mode}",
+        (10, h - 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 220, 220),
+        2,
+        cv2.LINE_AA,
     )
     return out
 
@@ -229,12 +249,16 @@ def validate_with_model(model, warped, tracker):
             continue
         tracked_sym = piece.symbol() if piece else None
         if model_sym != tracked_sym:
-            mismatches.append(f"{sq_name}: model={model_sym} tracked={tracked_sym or '-'}")
+            mismatches.append(
+                f"{sq_name}: model={model_sym} tracked={tracked_sym or '-'}"
+            )
 
     if mismatches:
         print("[validate] model disagrees on: " + "; ".join(sorted(mismatches)))
     else:
-        print("[validate] model agrees with the tracked position where it detected pieces")
+        print(
+            "[validate] model agrees with the tracked position where it detected pieces"
+        )
 
 
 def start_recording(start_fen=None):
@@ -272,7 +296,8 @@ def _check_display():
     # Check that OpenCV was built with a GUI backend (GTK or Qt).
     build_info = cv2.getBuildInformation()
     has_gui = any(
-        f"{lib}:" in build_info and "YES" in build_info.split(f"{lib}:")[1].split("\n")[0]
+        f"{lib}:" in build_info
+        and "YES" in build_info.split(f"{lib}:")[1].split("\n")[0]
         for lib in ("GTK+", "GTK", "Qt5", "Qt6", "QT")
     )
     gui_status = "ok" if has_gui else "not detected in build info (may still work)"
@@ -371,8 +396,10 @@ def main(start_fen=None, detection_mode=None):
                 if reference_warped is None:
                     reference_warped = warped.copy()
                 scores = square_change_scores(
-                    warped, reference_warped,
-                    padding=settings.warp_padding, inner=settings.diff_inner_fraction,
+                    warped,
+                    reference_warped,
+                    padding=settings.warp_padding,
+                    inner=settings.diff_inner_fraction,
                 )
                 changed_cells = changed_squares(scores, settings.diff_change_threshold)
                 # A hand crossing the board lights up many squares at once; skip
@@ -404,7 +431,9 @@ def main(start_fen=None, detection_mode=None):
                     view = warped
 
                 board = detections_to_board(
-                    results, warped.shape[1], warped.shape[0],
+                    results,
+                    warped.shape[1],
+                    warped.shape[0],
                     padding=settings.warp_padding,
                 )
                 if print_board and board:
@@ -435,7 +464,9 @@ def main(start_fen=None, detection_mode=None):
             view = draw_help_overlay(view)
 
         try:
-            cv2.imshow("Chess piece detection", scale_for_display(view, settings.display_size))
+            cv2.imshow(
+                "Chess piece detection", scale_for_display(view, settings.display_size)
+            )
         except Exception as e:
             print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
             break
@@ -485,8 +516,7 @@ def main(start_fen=None, detection_mode=None):
             settings.flip_orientation = flip
             corner = "top-left" if flip else "bottom-right"
             print(
-                f"[toggle] flip orientation: {'on' if flip else 'off'} "
-                f"(A1 at {corner})"
+                f"[toggle] flip orientation: {'on' if flip else 'off'} (A1 at {corner})"
             )
         elif key == ord("m"):
             detection_mode = "diff" if detection_mode == "model" else "model"
@@ -516,7 +546,9 @@ def main(start_fen=None, detection_mode=None):
                 if detection_mode == "diff" and locked_quad is None:
                     locked_quad = quad.copy()
                     board_visible = True
-                    print("[calib] board auto-locked for diff recording (press 'k' to unlock).")
+                    print(
+                        "[calib] board auto-locked for diff recording (press 'k' to unlock)."
+                    )
                 tracker = start_recording(start_fen)
                 # Anchor the diff reference to the start position being recorded.
                 reference_warped = warped.copy() if warped is not None else None

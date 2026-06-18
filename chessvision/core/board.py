@@ -96,7 +96,8 @@ def main():
                 quad = board_quad_from_corners(corners)
                 try:
                     view = warp_board(
-                        frame, quad,
+                        frame,
+                        quad,
                         size=settings.display_size,
                         padding=settings.warp_padding,
                     )
@@ -105,8 +106,12 @@ def main():
 
         status = "warp: ON" if warp_enabled else "warp: OFF"
         detected = "corners: OK" if corners is not None else "corners: --"
-        cv2.putText(view, status, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(view, detected, (10, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
+        cv2.putText(
+            view, status, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+        )
+        cv2.putText(
+            view, detected, (10, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2
+        )
 
         cv2.imshow("CV chessboard corners", view)
         key = cv2.waitKey(1) & 0xFF

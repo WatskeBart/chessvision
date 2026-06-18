@@ -104,7 +104,8 @@ def main():
         stem = img_path.stem
         viz = (
             draw_overlay(warped, labels, stats, flip, args.split, written)
-            if args.viz else None
+            if args.viz
+            else None
         )
         write_capture(args.out, args.split, stem, warped, labels, args.viz, viz)
         written += 1

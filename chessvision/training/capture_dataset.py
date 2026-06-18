@@ -42,16 +42,29 @@ from chessvision.settings import settings
 # Canonical class order — MUST match datasets/chess-pieces/data.yaml so class
 # IDs stay aligned when fine-tuning from the existing models/pieces.pt weights.
 CLASS_NAMES = [
-    "black-bishop", "black-king", "black-knight", "black-pawn",
-    "black-queen", "black-rook", "white-bishop", "white-king",
-    "white-knight", "white-pawn", "white-queen", "white-rook",
+    "black-bishop",
+    "black-king",
+    "black-knight",
+    "black-pawn",
+    "black-queen",
+    "black-rook",
+    "white-bishop",
+    "white-king",
+    "white-knight",
+    "white-pawn",
+    "white-queen",
+    "white-rook",
 ]
 CLASS_ID = {name: i for i, name in enumerate(CLASS_NAMES)}
 
 # FEN piece letter -> class name. Uppercase = white, lowercase = black.
 _PIECE = {
-    "p": "pawn", "n": "knight", "b": "bishop",
-    "r": "rook", "q": "queen", "k": "king",
+    "p": "pawn",
+    "n": "knight",
+    "b": "bishop",
+    "r": "rook",
+    "q": "queen",
+    "k": "king",
 }
 FEN_TO_CLASS = {
     sym: f"{'white' if sym.isupper() else 'black'}-{_PIECE[sym.lower()]}"
@@ -72,10 +85,12 @@ def _read_clipboard():
     """Return clipboard text or None. Tries pyperclip then xclip/xsel."""
     try:
         import pyperclip
+
         return pyperclip.paste()
     except Exception:
         pass
     import subprocess
+
     for cmd in (
         ["xclip", "-selection", "clipboard", "-o"],
         ["xsel", "--clipboard", "--output"],
@@ -128,11 +143,13 @@ def _put_text_rotated(img, text, org, font, scale, color, thickness, ccw_deg):
     tmp = cv2.rotate(tmp, _TEXT_CCW_FLAGS[ccw_deg])
     rh, rw = tmp.shape[:2]
     tx, ty = x, y - rh
-    ix1 = max(0, tx); ix2 = min(img.shape[1], tx + rw)
-    iy1 = max(0, ty); iy2 = min(img.shape[0], ty + rh)
+    ix1 = max(0, tx)
+    ix2 = min(img.shape[1], tx + rw)
+    iy1 = max(0, ty)
+    iy2 = min(img.shape[0], ty + rh)
     if ix1 >= ix2 or iy1 >= iy2:
         return
-    patch = tmp[iy1 - ty:iy2 - ty, ix1 - tx:ix2 - tx]
+    patch = tmp[iy1 - ty : iy2 - ty, ix1 - tx : ix2 - tx]
     mask = patch.any(axis=2)
     img[iy1:iy2, ix1:ix2][mask] = patch[mask]
 
@@ -226,8 +243,14 @@ def build_labels(result, gt, board_w, board_h, padding, flip, synthesize, rotati
             ccy = padding + (row + 0.5) * cell_h
             labels.append(
                 _norm_box(
-                    ccx - bw / 2, ccy - bh / 2, ccx + bw / 2, ccy + bh / 2,
-                    board_w, board_h, gt[sq], "synth",
+                    ccx - bw / 2,
+                    ccy - bh / 2,
+                    ccx + bw / 2,
+                    ccy + bh / 2,
+                    board_w,
+                    board_h,
+                    gt[sq],
+                    "synth",
                 )
             )
 
@@ -262,8 +285,14 @@ def draw_overlay(warped, labels, rotation):
         color = (0, 255, 0) if source == "model" else (255, 200, 0)  # green / cyan
         cv2.rectangle(out, (x1, y1), (x2, y2), color, 1)
         _put_text_rotated(
-            out, short_label(CLASS_NAMES[cls_id]), (x1, max(10, y1 - 3)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, rotation,
+            out,
+            short_label(CLASS_NAMES[cls_id]),
+            (x1, max(10, y1 - 3)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            color,
+            1,
+            rotation,
         )
     return out
 
@@ -279,7 +308,13 @@ def draw_header(img, stats, flip, rotation, split, captured):
     )
     cv2.rectangle(out, (0, 0), (w, 22), (0, 0, 0), -1)
     cv2.putText(
-        out, header, (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1,
+        out,
+        header,
+        (6, 16),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
         cv2.LINE_AA,
     )
     return out
@@ -293,8 +328,7 @@ def write_capture(out_dir, split, stem, warped, labels, save_viz, viz_img):
 
     cv2.imwrite(str(img_dir / f"{stem}.jpg"), warped)
     lines = [
-        f"{c} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}"
-        for c, xc, yc, bw, bh, _ in labels
+        f"{c} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}" for c, xc, yc, bw, bh, _ in labels
     ]
     (lbl_dir / f"{stem}.txt").write_text("\n".join(lines) + "\n")
 
@@ -322,30 +356,41 @@ def parse_args():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        "--fen", default="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+        "--fen",
+        default="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
         help="Position currently on the board (FEN piece-placement field). "
         "Default: standard starting position.",
     )
     p.add_argument("--out", type=Path, default=Path("datasets/my-pieces"))
     p.add_argument(
-        "--model", type=Path, default=settings.pieces_model_path,
+        "--model",
+        type=Path,
+        default=settings.pieces_model_path,
         help="Model to propose boxes (pieces.pt gives better proposals than onnx).",
     )
     p.add_argument(
-        "--val-every", type=int, default=5,
+        "--val-every",
+        type=int,
+        default=5,
         help="Send every Nth capture to the valid split (default 5 = ~20%% val).",
     )
     p.add_argument(
-        "--propose-conf", type=float, default=0.20,
+        "--propose-conf",
+        type=float,
+        default=0.20,
         help="Low conf for box proposals; empty-square boxes are dropped anyway.",
     )
     p.add_argument(
-        "--no-synthesize", action="store_true",
+        "--no-synthesize",
+        action="store_true",
         help="Do not add grid-cell boxes for known pieces the model missed.",
     )
     p.add_argument("--viz", action="store_true", help="Also save annotated viz images.")
     p.add_argument(
-        "--infer-every", type=int, default=1, metavar="N",
+        "--infer-every",
+        type=int,
+        default=1,
+        metavar="N",
         help="Run model inference only every N frames; display at full speed in between (default 1 = every frame).",
     )
     return p.parse_args()
@@ -380,9 +425,16 @@ def main():
     session = time.strftime("%Y%m%d_%H%M%S")
     captured = 0
     frame_idx = 0
-    labels, stats, warped, viz = [], {"matched": 0, "missing": 0, "synth": 0, "dropped": 0, "expected": len(gt)}, None, None
+    labels, stats, warped, viz = (
+        [],
+        {"matched": 0, "missing": 0, "synth": 0, "dropped": 0, "expected": len(gt)},
+        None,
+        None,
+    )
 
-    print("\nKeys: [space/s] capture  [e] new FEN  [v] paste FEN  [m] move  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n")
+    print(
+        "\nKeys: [space/s] capture  [e] new FEN  [v] paste FEN  [m] move  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n"
+    )
 
     while True:
         ret, frame = cap.read()
@@ -398,8 +450,13 @@ def main():
         if corners is None:
             view = frame.copy()
             cv2.putText(
-                view, "no board detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                0.8, (0, 0, 255), 2,
+                view,
+                "no board detected",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 0, 255),
+                2,
             )
             cv2.imshow(
                 "Capture dataset", scale_for_display(view, settings.display_size)
@@ -459,7 +516,9 @@ def main():
                     move = chess.Move.from_uci(move_str)
                     piece = board.piece_at(move.from_square)
                     if piece is None:
-                        raise ValueError(f"no piece on {chess.square_name(move.from_square)}")
+                        raise ValueError(
+                            f"no piece on {chess.square_name(move.from_square)}"
+                        )
                     board.remove_piece_at(move.from_square)
                     board.set_piece_at(move.to_square, piece)
                     gt = _gt_from_board(board)
@@ -468,8 +527,10 @@ def main():
                     print(f"[move] invalid move, board unchanged ({exc})")
         elif key == ord("f"):
             flip = not flip
-            print(f"[toggle] flip → {'ON' if flip else 'OFF'} "
-                  "(verify square labels match the real board)")
+            print(
+                f"[toggle] flip → {'ON' if flip else 'OFF'} "
+                "(verify square labels match the real board)"
+            )
         elif key == ord("r"):
             rotation = (rotation + 90) % 360
             print(f"[toggle] rotation → {rotation}°")
@@ -485,8 +546,10 @@ def main():
                 f"dropped {stats['dropped']}"
             )
             if stats["dropped"] > 2:
-                print("  ! several boxes dropped on empty squares — check FEN/flip "
-                      "or raise --propose-conf")
+                print(
+                    "  ! several boxes dropped on empty squares — check FEN/flip "
+                    "or raise --propose-conf"
+                )
 
     cap.release()
     cv2.destroyAllWindows()
