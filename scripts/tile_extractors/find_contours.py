@@ -1,16 +1,17 @@
 import cv2
 import numpy as np
-from tile_extractor import ChessBoardCell, ITileExtractor
+from chess_cell import ChessCell
+from tile_extractor import ITileExtractor
 
 class TileExtractor(ITileExtractor):
 
     rectangles = None
-    cells: ChessBoardCell = None
+    cells: list[list[ChessCell]] = None
 
     def __init__(self):
         ITileExtractor.__init__(self)
 
-    def extract(self, frame: cv2.Mat) -> cv2.Mat:
+    def extract(self, frame: cv2.Mat) :
 
         if self.rectangles is None: 
             gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
@@ -101,16 +102,15 @@ class TileExtractor(ITileExtractor):
             # Determine the row and column of the cell based on its center position
             col = int((x + w / 2) // w)
             row = int((y + h / 2) // h)
-            chess_cell = ChessBoardCell(x, y, w, h)
-            chess_cell.update(frame)
-            self.cells[row].insert(col, chess_cell)
+            chess_cell = ChessCell(x, y, w, h)
+            self.cells[col].insert(row, chess_cell)
 
 
         corner_cells = [self.cells[0][0], self.cells[0][7], self.cells[7][0], self.cells[7][7]]
         
         # Check which corner is white cell if that corner is white cell then that is H1 cell
         for n, cell in enumerate(corner_cells):
-            if cell.isWhite:
+            if cell.is_white_cell(frame):
                 break
 
         # Re order the cells based on the position of the H1 cell
@@ -120,12 +120,12 @@ class TileExtractor(ITileExtractor):
             # Columns need to be flipped
             for row in self.cells: row.reverse()
         elif n == 1:  # H1 is at top right corner
-            self.cells.reverse()
-            for row in self.cells: row.reverse()
+
             pass
         elif n == 2:  # H1 is at bottom left corner
             # Flip rows and columns
-
+            self.cells.reverse()
+            for row in self.cells: row.reverse()
             pass
         elif n == 3:  # H1 is at bottom right corner
             # Flip rows
@@ -135,7 +135,10 @@ class TileExtractor(ITileExtractor):
         for row in range(8):
             for col in range(8):
                 cell = self.cells[row][col]
-                cell.set_name(f"{chr(ord('A') + row)}{col+1}")
+                cell.init(row, col)
+                cell.update(frame)
+
+
 
         if(self.debug):
             cv2.imshow("A1 Cell", self.cells[0][0].get_cell(frame))

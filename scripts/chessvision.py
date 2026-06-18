@@ -3,6 +3,7 @@ import cv2
 from chessboard_extractors.find_chessboard import ChessboardExtractor
 from chessboard_extractor import IChessboardExtractor
 
+from chess_cell import ChessCell
 from tile_extractor import ITileExtractor
 from tile_extractors.find_contours import TileExtractor
 
@@ -43,7 +44,7 @@ def main():
 
 
         if cells is not None:
-            update_cells = []
+            update_cells: list[ChessCell] = []
 
             for row in cells:
                 for cell in row:
@@ -51,17 +52,24 @@ def main():
                         update_cells.append(cell)
                     cell.draw_cell(extracted_chessboard)
             
-            if len(update_cells) == 2 and update_cells[0].new_state != update_cells[1].new_state:
-                cell_updated_frame_count += 1
-                if cell_updated_frame_count > 10:
-                    print(f"Cells updated: {update_cells[0].name} and {update_cells[1].name}")
-                    update_cells[0].commit_state()
-                    update_cells[1].commit_state()
+            if len(update_cells) == 2:
+
+                cellA = update_cells[0]
+                cellB = update_cells[1]
+
+                cv2.imshow("Cell A", cellA.get_cell(extracted_chessboard))
+                cv2.imshow("Cell B", cellB.get_cell(extracted_chessboard))
+
+                if cellA.canMove(cellB):
+                    if cell_updated_frame_count > 5:
+                        cellA.move(cellB)   
+                    cell_updated_frame_count += 1
+                elif cellB.canMove(cellA):
+                    if cell_updated_frame_count > 5:
+                        cellB.move(cellA)
+                    cell_updated_frame_count += 1
+                else:
                     cell_updated_frame_count = 0
-
-                    # Write cell updated text to new opencv window
-
-
 
             elif len(update_cells) > 2:
                 cell_updated_frame_count = 0
