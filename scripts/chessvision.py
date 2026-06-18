@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 
 from chessboard_extractors.find_chessboard import ChessboardExtractor
 from chessboard_extractor import IChessboardExtractor
@@ -18,13 +19,21 @@ def main():
     # Replace with your stream URL
     stream_url = "http://10.42.0.177:4444/stream"
     cap = cv2.VideoCapture(stream_url)
-    cell_updated_frame_count = 0
     instruction_window = cv2.namedWindow("Instruction")
 
 
     if not cap.isOpened():
         print("Error: Could not open video stream.")
         return
+    
+
+    updatedCells: list[ChessCell] = []
+    updatedCellsCount: int = 0
+    whiteTurn = True
+
+    screen = None
+
+    last_move = None
     
     while True:
         ret, frame = cap.read()
@@ -44,39 +53,67 @@ def main():
 
 
         if cells is not None:
-            update_cells: list[ChessCell] = []
+
+            prevUpdatedCells = updatedCells
+            updatedCells = []
 
             for row in cells:
                 for cell in row:
                     if cell.update(extracted_chessboard):
-                        update_cells.append(cell)
+                        updatedCells.append(cell)
                     cell.draw_cell(extracted_chessboard)
-            
-            if len(update_cells) == 2:
 
-                cellA = update_cells[0]
-                cellB = update_cells[1]
+            if len(prevUpdatedCells) == len(updatedCells):
+                updatedCellsCount += 1
+            else:
+                updatedCellsCount = 0
 
-                cv2.imshow("Cell A", cellA.get_cell(extracted_chessboard))
-                cv2.imshow("Cell B", cellB.get_cell(extracted_chessboard))
 
-                if cellA.canMove(cellB):
-                    if cell_updated_frame_count > 5:
-                        cellA.move(cellB)   
-                    cell_updated_frame_count += 1
-                elif cellB.canMove(cellA):
-                    if cell_updated_frame_count > 5:
-                        cellB.move(cellA)
-                    cell_updated_frame_count += 1
-                else:
-                    cell_updated_frame_count = 0
+            moved: list[int] = []
 
-            elif len(update_cells) > 2:
-                cell_updated_frame_count = 0
+
+
+            if updatedCellsCount > 10 and len(updatedCells) > 1 and len(updatedCells) < 5:
+                for cellA in updatedCells:
+                    
+                    if cellA.id in moved: 
+                        continue
+
+                    for cellB in updatedCells:
+
+                        if cellA.id == cellB.id or cellB in moved:
+                            continue
+                     
+                        if cellA.canMove(whiteTurn, cellB):
+                            last_move = cellA.move(whiteTurn, cellB)
+                        elif cellB.canMove(whiteTurn, cellA):
+                            last_move = cellB.move(whiteTurn, cellA)
+                        else:
+                            continue
+
+                        moved.append(cellA.id)
+                        moved.append(cellB.id)
+                        whiteTurn = not whiteTurn
+
+
+
+        
+        if screen is None:
+            screen = np.ndarray((extracted_chessboard.shape[0] + 100,) + extracted_chessboard.shape[1:], dtype= extracted_chessboard.dtype)
+        
+        screen[:extracted_chessboard.shape[0], :] = extracted_chessboard
+        screen[extracted_chessboard.shape[0]:, :] = (255, 255, 255)
+
+
+        botton_screen_shape = screen[extracted_chessboard.shape[0]:, :].shape
+        
+        if last_move is not None:
+            cv2.putText(screen[extracted_chessboard.shape[0]:, :], last_move, (50, 50), cv2.FONT_HERSHEY_COMPLEX, 2, (255, 0, 0), 1)
+
 
 
         # Display the extracted chessboard
-        cv2.imshow("Extracted Chessboard", extracted_chessboard)
+        cv2.imshow("Game", screen)
 
         # Exit on pressing 'q'
         if cv2.waitKey(1) & 0xFF == ord('q'):
