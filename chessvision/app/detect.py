@@ -44,6 +44,8 @@ TOGGLE_HELP_LINES = [
     "  o  rotate square mapping 90 (view stays as raw feed)",
     "  f  toggle board flip orientation",
     "  r  start/stop recording the game (PGN + FEN log)",
+    "  u  undo last recorded move + re-anchor reference",
+    "  a  re-anchor reference to current view (no undo)",
     "  s  save current frame to snapshot_<n>.png",
     "  ESC  quit",
 ]
@@ -188,6 +190,37 @@ def draw_record_overlay(frame, tracker):
         2,
         cv2.LINE_AA,
     )
+    return out
+
+
+def draw_last_move_overlay(frame, san):
+    """Draw the last committed move in large text at the bottom centre."""
+    out = frame.copy()
+    h, w = out.shape[:2]
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 1.4, 3
+    text = san
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+    x = (w - tw) // 2
+    y = h - 18
+    cv2.putText(out, text, (x + 2, y + 2), font, scale, (0, 0, 0), thickness + 2, cv2.LINE_AA)
+    cv2.putText(out, text, (x, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    return out
+
+
+def draw_illegal_move_overlay(frame):
+    """Draw a centred 'Illegal move' warning."""
+    out = frame.copy()
+    h, w = out.shape[:2]
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3
+    text = "Illegal move"
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+    x = (w - tw) // 2
+    y = h // 2 + th // 2
+    pad = 12
+    overlay = out.copy()
+    cv2.rectangle(overlay, (x - pad, y - th - pad), (x + tw + pad, y + pad), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.55, out, 0.45, 0, out)
+    cv2.putText(out, text, (x, y), font, scale, (0, 0, 220), thickness, cv2.LINE_AA)
     return out
 
 
@@ -456,6 +489,10 @@ def main(start_fen=None, detection_mode=None):
 
         if tracker is not None:
             view = draw_record_overlay(view, tracker)
+            if tracker.last_san:
+                view = draw_last_move_overlay(view, tracker.last_san)
+            if tracker.illegal_flag:
+                view = draw_illegal_move_overlay(view)
 
         view = draw_mode_indicator(view, detection_mode)
         view = draw_corner_markers(view)
@@ -552,6 +589,19 @@ def main(start_fen=None, detection_mode=None):
                 tracker = start_recording(start_fen)
                 # Anchor the diff reference to the start position being recorded.
                 reference_warped = warped.copy() if warped is not None else None
+        elif key == ord("u"):
+            if tracker is None:
+                print("[rec] not recording")
+            else:
+                if tracker.undo_last_move() and warped is not None:
+                    reference_warped = warped.copy()
+        elif key == ord("a"):
+            if tracker is None:
+                print("[rec] not recording")
+            else:
+                tracker.reset_debounce()
+                if warped is not None:
+                    reference_warped = warped.copy()
         elif key == ord("s"):
             path = f"snapshot_{snapshot_count}.png"
             cv2.imwrite(path, view)

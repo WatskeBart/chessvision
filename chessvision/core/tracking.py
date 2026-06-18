@@ -104,6 +104,8 @@ class GameTracker:
 
         self.move_count = 0
         self.last_san = None
+        # Set to True when a diff matches no legal move; cleared on the next commit.
+        self.illegal_flag = False
 
         self._write_files()  # emit starting position immediately
 
@@ -166,6 +168,44 @@ class GameTracker:
             self._evaluated_key = key
             return True
         return False
+
+    def undo_last_move(self) -> bool:
+        """Pop the last committed move, reset debounce, and update the PGN/FEN files.
+
+        Returns True if a move was undone, False if the game is already at the start.
+        Call this when the user needs to correct a phantom commit caused by camera
+        occlusion; pair it with re-anchoring reference_warped to the current view."""
+        if not self.board.move_stack:
+            self._log("[rec] nothing to undo")
+            return False
+        self.board.pop()
+        self.move_count -= 1
+        self.illegal_flag = False
+        self._evaluated_key = None
+        self._stable_key = None
+        self._stable_count = 0
+        if self.board.move_stack:
+            replay = chess.Board(self._start_fen)
+            moves = list(self.board.move_stack)
+            for m in moves[:-1]:
+                replay.push(m)
+            self.last_san = replay.san(moves[-1])
+        else:
+            self.last_san = None
+        self._write_files()
+        self._log(f"[rec] last move undone — now at move {self.move_count}")
+        return True
+
+    def reset_debounce(self) -> None:
+        """Clear debounce state without undoing any move.
+
+        Use this to re-anchor after camera occlusion when no phantom move was
+        committed — the tracker will re-evaluate from the current view."""
+        self.illegal_flag = False
+        self._evaluated_key = None
+        self._stable_key = None
+        self._stable_count = 0
+        self._log("[rec] tracking re-anchored to current view")
 
     def finalize(self) -> None:
         """Flush the final game state (e.g. when the user stops recording)."""
@@ -326,6 +366,7 @@ class GameTracker:
                 f"[rec] change {self._fmt_squares(changed)} matches no legal move — "
                 "press 'v' to validate against the model"
             )
+            self.illegal_flag = True
             return None
 
         if len(best_moves) > 1:
@@ -349,6 +390,7 @@ class GameTracker:
         self.board.push(move)
         self.move_count += 1
         self.last_san = san
+        self.illegal_flag = False
         self._log(f"[rec] {label} {san}   {self.board.fen()}")
         self._write_files()
         if self.board.is_game_over():
