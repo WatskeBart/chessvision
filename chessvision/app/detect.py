@@ -224,6 +224,33 @@ def draw_illegal_move_overlay(frame):
     return out
 
 
+def draw_undo_prompt_overlay(frame):
+    """Draw a two-line centred prompt asking the user to restore the piece first."""
+    out = frame.copy()
+    h, w = out.shape[:2]
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.85, 2
+    lines = [
+        "Move piece back to its square,",
+        "then press U to confirm  (any other key cancels)",
+    ]
+    line_h = 36
+    total_h = line_h * len(lines)
+    pad = 14
+    widths = [cv2.getTextSize(l, font, scale, thickness)[0][0] for l in lines]
+    box_w = max(widths) + pad * 2
+    box_x = (w - box_w) // 2
+    box_y = h // 2 - total_h // 2 - pad
+    overlay = out.copy()
+    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_w, box_y + total_h + pad * 2), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.65, out, 0.35, 0, out)
+    for i, line in enumerate(lines):
+        tw = widths[i]
+        x = (w - tw) // 2
+        y = box_y + pad + (i + 1) * line_h - 6
+        cv2.putText(out, line, (x, y), font, scale, (0, 200, 255), thickness, cv2.LINE_AA)
+    return out
+
+
 def draw_changed_overlay(warped, changed_cells, padding=0):
     """Outline the squares the subtraction step flagged as changed (diff mode)."""
     out = warped.copy()
@@ -378,6 +405,7 @@ def main(start_fen=None, detection_mode=None):
     board_visible = True  # tracks corner-detection state for recording logs
     locked_quad = None  # cached board quad once calibrated, else detect per frame
     reference_warped = None  # diff mode: warped board as of the last committed move
+    undo_pending = False  # True after first 'u' press, waiting for confirmation
 
     while True:
         ret, frame = cap.read()
@@ -493,6 +521,8 @@ def main(start_fen=None, detection_mode=None):
                 view = draw_last_move_overlay(view, tracker.last_san)
             if tracker.illegal_flag:
                 view = draw_illegal_move_overlay(view)
+        if undo_pending:
+            view = draw_undo_prompt_overlay(view)
 
         view = draw_mode_indicator(view, detection_mode)
         view = draw_corner_markers(view)
@@ -511,6 +541,9 @@ def main(start_fen=None, detection_mode=None):
         key = cv2.waitKey(1) & 0xFF
         if frame_count == 1:
             print(f"[loop] waitKey returned {key}", flush=True)
+        if undo_pending and key != 0xFF and key != ord("u"):
+            undo_pending = False
+            print("[rec] undo cancelled")
         if key == 27:  # ESC — quit
             if tracker is not None:
                 tracker.finalize()
@@ -592,7 +625,11 @@ def main(start_fen=None, detection_mode=None):
         elif key == ord("u"):
             if tracker is None:
                 print("[rec] not recording")
+            elif not undo_pending:
+                undo_pending = True
+                print("[rec] undo: move piece back to its original square, then press U again")
             else:
+                undo_pending = False
                 if tracker.undo_last_move() and warped is not None:
                     reference_warped = warped.copy()
         elif key == ord("a"):
