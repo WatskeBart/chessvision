@@ -1,5 +1,7 @@
 import argparse
+import signal
 import sys
+import threading
 import time
 from collections import deque
 from datetime import datetime
@@ -420,6 +422,15 @@ def main(start_fen=None, detection_mode=None, web_port: int | None = None):
     console_log = _ConsoleLog()
     sys.stdout = console_log
 
+    stop_event = threading.Event()
+
+    def _handle_stop(signum, _frame):
+        print(f"\n[signal] received {signal.Signals(signum).name}, shutting down…", flush=True)
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, _handle_stop)
+    signal.signal(signal.SIGINT, _handle_stop)
+
     web_mode = web_port is not None
     if web_mode:
         from chessvision.app import web_stream as _ws
@@ -470,7 +481,7 @@ def main(start_fen=None, detection_mode=None, web_port: int | None = None):
     undo_pending = False  # True after first 'u' press, waiting for confirmation
     illegal_restore_frames = 0  # consecutive clear frames since illegal_flag was set
 
-    while True:
+    while not stop_event.is_set():
         ret, frame = cap.read()
         if not ret:
             print("[stream] read failed, reconnecting...", flush=True)
@@ -741,6 +752,9 @@ def main(start_fen=None, detection_mode=None, web_port: int | None = None):
             print(f"[snapshot] saved {path}")
             snapshot_count += 1
 
+    if stop_event.is_set() and tracker is not None:
+        tracker.finalize()
+        print(f"[rec] recording stopped -> {tracker.pgn_path}", flush=True)
     cap.release()
     if not web_mode:
         cv2.destroyAllWindows()
