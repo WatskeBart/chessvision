@@ -219,3 +219,8 @@ __marimo__/
 
 # Claude settings
 .claude/
+
+# Games directory — allow PGN and log files
+!games/
+!games/*.pgn
+!games/*.log
