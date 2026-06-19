@@ -34,12 +34,19 @@ _HTML = b"""<!DOCTYPE html>
     <button onclick="cmd('r')">Record / stop (r)</button>
     <button onclick="cmd('k')">Lock board (k)</button>
     <button onclick="cmd('d')">Toggle detections (d)</button>
+    <button onclick="cmd('c')">Corner preview (c)</button>
     <button onclick="cmd('m')">Switch mode (m)</button>
     <button onclick="cmd('v')">Validate (v)</button>
-    <button onclick="cmd('p')">Print board (p)</button>
+    <button onclick="cmd('o')">Rotate 90\xc2\xb0 (o)</button>
+    <button onclick="cmd('f')">Flip board (f)</button>
   </div>
   <script>
     function cmd(key) { fetch('/cmd/' + encodeURIComponent(key)).catch(() => {}); }
+    document.addEventListener('keydown', function(e) {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      var key = e.key === 'Escape' ? '\x1b' : (e.key.length === 1 ? e.key : null);
+      if (key) { e.preventDefault(); cmd(key); }
+    });
   </script>
 </body>
 </html>
