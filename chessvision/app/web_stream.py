@@ -87,9 +87,9 @@ def _pgn_list_html() -> bytes:
         body = b"<p class='empty'>No recorded games yet.</p>"
     return (
         b"<!DOCTYPE html><html><head><meta charset='utf-8'><title>chessvision \xe2\x80\x94 games</title>"
-        b"<style>" + _PGN_LIST_STYLE + b"</style></head>"
-        b"<body><h1>Recorded games</h1>" + body
-        b"<a class='back' href='/'>&#8592; back to board</a></body></html>"
+        + b"<style>" + _PGN_LIST_STYLE + b"</style></head>"
+        + b"<body><h1>Recorded games</h1>" + body
+        + b"<a class='back' href='/'>&#8592; back to board</a></body></html>"
     )
 
 
