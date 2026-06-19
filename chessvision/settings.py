@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     # piece leaving a light square (e.g. a pawn's source square on h2->h3) didn't
     # register, so the 2-square move showed only its destination and matched no
     # legal move. 8 stays ~4x above the noise floor.
-    diff_change_threshold: float = 8.0
+    diff_change_threshold: float = 10.0
 
     # Central fraction of each square sampled for change (avoids grid lines and
     # tall neighbouring pieces leaning over the boundary).
