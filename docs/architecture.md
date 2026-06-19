@@ -14,6 +14,7 @@ chessvision/
 │   └── display.py         small display helper (upscale for viewing)
 ├── app/                   interactive applications
 │   ├── detect.py          the main app: detect/record (gm-detect)
+│   ├── web_stream.py      MJPEG HTTP server for --web mode (buttons, keyboard, PGN download)
 │   └── view_camera.py     raw stream preview (gm-view)
 └── training/              dataset + model tooling
     ├── capture_dataset.py live model-assisted labelling (gm-capture)
@@ -100,6 +101,35 @@ unreliable exactly when you want to record. Locking the transform (`k`) caches
 the warp and reuses it every frame, skipping corner detection entirely, so
 pieces or a passing hand can't break tracking. The recommended flow is: lock on
 the empty board, then place the pieces and press `r` to record.
+
+## Web mode (`--web`)
+
+Passing `--web [PORT]` to `gm-detect` replaces the OpenCV window with a
+lightweight HTTP server (`chessvision/app/web_stream.py`):
+
+- **`/`** — HTML page with the live MJPEG stream, control buttons, and a
+  "Download recorded games" link. Buttons cover the most common actions (`r`,
+  `k`, `d`, `c`, `m`, `v`, `o`, `f`); keyboard shortcuts for all keys also work
+  directly in the browser via a `keydown` listener.
+- **`/stream`** — raw MJPEG feed (25 fps JPEG).
+- **`/cmd/<key>`** — single-character command endpoint; the per-frame loop polls
+  this with `pop_command()` and maps the result to the same key-handler as the
+  OpenCV `waitKey` path.
+- **`/pgn`** — HTML listing of all recorded `.pgn` files, sorted newest-first.
+- **`/pgn/<filename>`** — download a specific game as an attachment.
+
+The server uses `ThreadingHTTPServer` so the long-lived `/stream` connection
+doesn't block `/cmd/` or `/pgn` requests.
+
+## Graceful shutdown
+
+`detect.py` registers handlers for both `SIGTERM` and `SIGINT`. This matters
+especially in containers: Python running as PID 1 ignores `SIGTERM` by default
+(Linux kernel behaviour), so without an explicit handler `docker stop` /
+`podman stop` would always time out and fall back to SIGKILL, losing any
+unsaved recording data. The handlers set a `threading.Event` that the main loop
+checks at the top of each iteration, triggering the same cleanup path (tracker
+finalize, camera release) as a normal ESC quit.
 
 ## Two detection modes
 

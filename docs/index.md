@@ -45,14 +45,32 @@ uv run gm-detect --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R
 | `d` | Toggle the detection overlay |
 | `c` | Toggle the corner overlay on the raw frame |
 | `k` | Lock / unlock the board transform |
+| `l` | Toggle the console log window |
 | `m` | Switch detection mode (`diff` ⇄ `model`) |
 | `v` | Validate the current board against the model |
 | `p` | Toggle printing the board state to stdout |
 | `o` | Rotate the square mapping 90° |
 | `f` | Toggle board flip orientation |
 | `r` | Start / stop recording the game |
+| `u` | Undo the last recorded move and re-anchor the reference frame |
+| `a` | Re-anchor the reference frame to the current view (no undo) |
 | `s` | Save the current frame as `snapshot_<n>.png` |
 | `ESC` | Quit |
+
+## Web mode (`--web`)
+
+Pass `--web [PORT]` (default 8080) to serve the board view as an MJPEG stream
+instead of opening an OpenCV window — useful in Docker/Podman or SSH sessions
+without X11:
+
+```bash
+uv run gm-detect --web 8080
+```
+
+Open `http://localhost:8080` in a browser. The page streams the live board and
+provides buttons for all common actions. The same single-key shortcuts listed
+above also work from the browser. Recorded PGN files can be downloaded at
+`/pgn`.
 
 ## Commands
 

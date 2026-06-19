@@ -32,7 +32,7 @@ Each entry point in `[project.scripts]` maps a command to a function:
 
 | Command | Target | Notes |
 | --- | --- | --- |
-| `gm-detect` | `chessvision.app.detect:cli` | main app; `--from-fen`, `--detect` |
+| `gm-detect` | `chessvision.app.detect:cli` | main app; `--from-fen`, `--detect`, `--web [PORT]` |
 | `gm-view` | `chessvision.app.view_camera:main` | raw stream preview |
 | `gm-corners` | `chessvision.core.board:main` | board-detection debug |
 | `gm-capture` | `chessvision.training.capture_dataset:main` | |

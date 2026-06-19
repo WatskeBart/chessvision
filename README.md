@@ -52,16 +52,23 @@ uv run gm-detect --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R
 | `d` | Toggle the detection overlay (boxes / changed-square outlines) |
 | `c` | Toggle the corner overlay on the raw frame |
 | `k` | Lock / unlock the board transform (calibrate once) |
+| `l` | Toggle the console log window |
 | `m` | Switch detection mode (`diff` ⇄ `model`) |
 | `v` | Validate the current board against the model (`diff` mode) |
 | `p` | Toggle printing the board state to stdout |
 | `o` | Rotate the square mapping 90° (view stays as the raw feed) |
 | `f` | Toggle board flip orientation |
 | `r` | Start / stop recording the game |
+| `u` | Undo the last recorded move and re-anchor the reference frame |
+| `a` | Re-anchor the reference frame to the current view (no undo) |
 | `s` | Save the current frame as `snapshot_<n>.png` |
 | `ESC` | Quit (finalizes an in-progress recording first) |
 
 ## Running with Podman
+
+> **Experimental.** The container image is large (~11 GB) because it bundles
+> PyTorch and the full YOLO runtime. This is a known issue and will be addressed
+> in a future iteration.
 
 ### Build
 
@@ -81,6 +88,13 @@ podman run --rm -it \
 ```
 
 `--web` defaults to port 8080. Pass `--web 9090` to use a different port (and update `-p` accordingly).
+
+The web UI provides on-screen buttons for all common actions and also responds to
+the same single-key shortcuts listed above. Recorded games can be downloaded
+directly from the browser at `/pgn`.
+
+The container shuts down gracefully on `docker stop` / `podman stop` (SIGTERM),
+finalizing any in-progress recording before exiting.
 
 ### X11 window (local display forwarding)
 
