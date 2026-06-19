@@ -1,6 +1,6 @@
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
 
@@ -111,7 +111,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def start(host: str = "0.0.0.0", port: int = 8080) -> None:
     """Start the MJPEG HTTP server in a background daemon thread."""
-    server = HTTPServer((host, port), _Handler)
+    server = ThreadingHTTPServer((host, port), _Handler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     print(f"[web] streaming at http://{host}:{port}/", flush=True)
