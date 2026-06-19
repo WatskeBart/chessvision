@@ -1,7 +1,7 @@
 # Common tasks for chessvision. Run `make help` to list them.
 # Pass extra CLI args with ARGS, e.g.  make capture ARGS='--fen "..."'
 .DEFAULT_GOAL := help
-.PHONY: help sync detect view corners capture autolabel train export lint fmt
+.PHONY: help sync detect view corners capture autolabel train export lint fmt docs docs-serve
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -36,3 +36,9 @@ lint: ## Lint with ruff
 
 fmt: ## Format with ruff
 	uv run ruff format .
+
+docs: ## Build the documentation site
+	uv run --group dev zensical build
+
+docs-serve: ## Serve the documentation locally with live reload
+	uv run --group dev zensical serve

@@ -29,7 +29,7 @@ so the relative paths (`models/`, `datasets/`, `games/`) resolve.
 | `GRANDMASTER_GAME_STABILITY_FRAMES` | `6` | Consecutive identical frames before a board state is accepted and a move recorded |
 | `GRANDMASTER_GAMES_DIR` | `games` | Directory where recorded games (`.pgn` + `.fen.log`) are written |
 | `GRANDMASTER_GAME_DEBUG` | `false` | Verbose recording diagnostics (stability progress, match scores) |
-| `GRANDMASTER_DIFF_CHANGE_THRESHOLD` | `8.0` | `diff` mode: mean grayscale change (0–255) for a square to count as "changed". Lower if low-contrast moves are missed; raise to ignore shadows |
+| `GRANDMASTER_DIFF_CHANGE_THRESHOLD` | `10.0` | `diff` mode: mean grayscale change (0–255) for a square to count as "changed". Lower if low-contrast moves are missed; raise to ignore shadows |
 | `GRANDMASTER_DIFF_INNER_FRACTION` | `0.7` | `diff` mode: central fraction of each square sampled (avoids grid lines / leaning pieces) |
 | `GRANDMASTER_DIFF_MAX_CHANGED` | `6` | `diff` mode: frames with more changed squares than this are treated as noise (e.g. a hand) and skipped |
 | `GRANDMASTER_DIFF_TOLERANCE` | `1` | `diff` mode: extra changed squares tolerated beyond a move's own squares when matching |
@@ -41,8 +41,8 @@ Only used by `gm-train` / `gm-capture` (see [training](training.md)):
 | Setting (env var) | Default | Purpose |
 | --- | --- | --- |
 | `GRANDMASTER_TRAIN_MODEL_PATH` | `models/yolo26n.pt` | Base checkpoint to fine-tune from |
-| `GRANDMASTER_TRAIN_DATA_YAML` | `datasets/chess-pieces/data.yaml` | Training dataset (YOLO format) |
-| `GRANDMASTER_TRAIN_EPOCHS` | `100` | Training epochs |
+| `GRANDMASTER_TRAIN_DATA_YAML` | `datasets/combined/data.yaml` | Training dataset (YOLO format). The combined dataset merges the external `chess-pieces` dataset with your own captured `my-pieces` images |
+| `GRANDMASTER_TRAIN_EPOCHS` | `40` | Training epochs |
 | `GRANDMASTER_TRAIN_IMGSZ` | `640` | Training image size |
 | `GRANDMASTER_TRAIN_PATIENCE` | `20` | Early-stopping patience |
 | `GRANDMASTER_TRAIN_DEVICE` | `0` | GPU index, or `cpu` |

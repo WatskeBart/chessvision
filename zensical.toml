@@ -1,0 +1,14 @@
+[project]
+site_name = "chessvision"
+site_url = "https://github.com/WatskeBart/chessvision"
+docs_dir = "docs"
+site_dir = "site"
+
+nav = [
+    { "Home" = "index.md" },
+    { "Architecture" = "architecture.md" },
+    { "Configuration" = "configuration.md" },
+    { "Hardware setup" = "hardware.md" },
+    { "Training & datasets" = "training.md" },
+    { "Development" = "development.md" },
+]

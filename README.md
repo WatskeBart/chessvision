@@ -61,6 +61,39 @@ uv run gm-detect --from-fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R
 | `s` | Save the current frame as `snapshot_<n>.png` |
 | `ESC` | Quit (finalizes an in-progress recording first) |
 
+## Running with Podman
+
+### Build
+
+```bash
+podman build -t chessvision .
+```
+
+### Web stream (no X11 required — open `http://localhost:8080` in a browser)
+
+```bash
+podman run --rm -it \
+  -p 8080:8080 \
+  -v ./models:/app/models:ro \
+  -v ./games:/app/games \
+  --env-file .env \
+  chessvision uv run gm-detect --web
+```
+
+`--web` defaults to port 8080. Pass `--web 9090` to use a different port (and update `-p` accordingly).
+
+### X11 window (local display forwarding)
+
+```bash
+podman run --rm -it \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v ./models:/app/models:ro \
+  -v ./games:/app/games \
+  --env-file .env \
+  chessvision
+```
+
 ## Commands
 
 All commands run with `uv run <name>` from the repo root:

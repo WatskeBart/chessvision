@@ -1,5 +1,6 @@
 import argparse
 import sys
+import time
 from collections import deque
 from datetime import datetime
 
@@ -415,10 +416,17 @@ def _check_display():
     print(f"[display] DISPLAY={display!r}  OpenCV GUI: {gui_status}")
 
 
-def main(start_fen=None, detection_mode=None):
+def main(start_fen=None, detection_mode=None, web_port: int | None = None):
     console_log = _ConsoleLog()
     sys.stdout = console_log
-    _check_display()
+
+    web_mode = web_port is not None
+    if web_mode:
+        from chessvision.app import web_stream as _ws
+        _ws.start(port=web_port)
+    else:
+        _ws = None
+        _check_display()
     print("\n".join(TOGGLE_HELP_LINES))
     detection_mode = detection_mode or settings.detection_mode
     print(f"[init] detection mode: {detection_mode}")
@@ -609,20 +617,21 @@ def main(start_fen=None, detection_mode=None):
         if show_help:
             view = draw_help_overlay(view)
 
-        try:
-            cv2.imshow(
-                "Chess piece detection", scale_for_display(view, settings.display_size)
-            )
-        except Exception as e:
-            print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
-            break
-
-        if show_log:
-            cv2.imshow("Console log", draw_console_view(console_log.lines))
-
-        key = cv2.waitKey(1) & 0xFF
-        if frame_count == 1:
-            print(f"[loop] waitKey returned {key}", flush=True)
+        scaled = scale_for_display(view, settings.display_size)
+        if web_mode:
+            _ws.push_frame(scaled)
+            time.sleep(1 / 30)
+            cmd = _ws.pop_command()
+            key = ord(cmd[0]) if cmd else 0xFF
+        else:
+            try:
+                cv2.imshow("Chess piece detection", scaled)
+            except Exception as e:
+                print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
+                break
+            if show_log:
+                cv2.imshow("Console log", draw_console_view(console_log.lines))
+            key = cv2.waitKey(1) & 0xFF
         if undo_pending and key != 0xFF and key != ord("u"):
             undo_pending = False
             print("[rec] undo cancelled")
@@ -660,7 +669,7 @@ def main(start_fen=None, detection_mode=None):
         elif key == ord("l"):
             show_log = not show_log
             print(f"[toggle] console log window: {'on' if show_log else 'off'}")
-            if not show_log:
+            if not show_log and not web_mode:
                 cv2.destroyWindow("Console log")
         elif key == ord("p"):
             print_board = not print_board
@@ -733,7 +742,8 @@ def main(start_fen=None, detection_mode=None):
             snapshot_count += 1
 
     cap.release()
-    cv2.destroyAllWindows()
+    if not web_mode:
+        cv2.destroyAllWindows()
 
 
 def parse_args():
@@ -757,6 +767,18 @@ def parse_args():
         "the move from the rules; needs a known start and a locked board). "
         "Defaults to settings.detection_mode. Toggle at runtime with 'm'.",
     )
+    parser.add_argument(
+        "--web",
+        metavar="PORT",
+        type=int,
+        nargs="?",
+        const=8080,
+        default=None,
+        help="Serve the board view as an MJPEG stream instead of opening an "
+        "OpenCV window. Opens an HTTP server on PORT (default 8080) with a "
+        "live stream at /stream and control buttons at /. Useful in Docker "
+        "or SSH sessions where X11 is unavailable.",
+    )
     return parser.parse_args()
 
 
@@ -770,7 +792,7 @@ def cli():
         except ValueError as e:
             print(f"ERROR: invalid --from-fen: {e}", file=sys.stderr)
             raise SystemExit(2) from None
-    main(start_fen, detection_mode=args.detect)
+    main(start_fen, detection_mode=args.detect, web_port=args.web)
 
 
 if __name__ == "__main__":
