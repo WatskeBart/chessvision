@@ -1,0 +1,10 @@
+train:
+  - ../chess-pieces/train/images
+  - ../my-pieces/train/images
+
+val:
+  - ../chess-pieces/valid/images
+  - ../my-pieces/valid/images
+
+nc: 12
+names: ['black-bishop', 'black-king', 'black-knight', 'black-pawn', 'black-queen', 'black-rook', 'white-bishop', 'white-king', 'white-knight', 'white-pawn', 'white-queen', 'white-rook']

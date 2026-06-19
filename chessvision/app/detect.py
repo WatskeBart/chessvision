@@ -1,9 +1,12 @@
 import argparse
 import sys
+import time
+from collections import deque
 from datetime import datetime
 
 import chess
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 from chessvision.core.board import board_quad_from_corners, find_corners, warp_board
@@ -38,6 +41,7 @@ TOGGLE_HELP_LINES = [
     "  d  toggle detection overlay (boxes/labels)",
     "  c  toggle corner overlay on raw frame",
     "  k  lock/unlock board transform (calibrate once)",
+    "  l  toggle console log window",
     "  m  switch detection mode (model <-> diff/subtraction)",
     "  v  validate current board against the model (diff mode)",
     "  p  toggle printing board state to stdout",
@@ -65,15 +69,23 @@ def square_name(col, row):
 
 def detections_to_board(result, board_w, board_h, padding=0):
     """Map each detected piece to a square based on the box's bottom-center
-    point (a piece's base sits on its square, the box center does not)."""
+    point (a piece's base sits on its square, the box center does not).
+
+    Detections whose bottom-center falls in the padding margin are discarded
+    so pieces near the warp edge don't get clamped onto a border square."""
     board = {}
-    cell_w = (board_w - 2 * padding) / 8
-    cell_h = (board_h - 2 * padding) / 8
+    valid_w = board_w - 2 * padding
+    valid_h = board_h - 2 * padding
+    cell_w = valid_w / 8
+    cell_h = valid_h / 8
 
     for box in result.boxes:
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         cx = (x1 + x2) / 2 - padding
         cy = y2 - padding  # bottom edge of the box, offset by padding
+
+        if not (0 <= cx < valid_w and 0 <= cy < valid_h):
+            continue
 
         col = min(7, max(0, int(cx // cell_w)))
         row = min(7, max(0, int(cy // cell_h)))
@@ -99,7 +111,7 @@ def draw_help_overlay(frame):
     box_h = pad * 2 + line_h * len(TOGGLE_HELP_LINES)
     overlay = out.copy()
     cv2.rectangle(overlay, (0, 0), (box_w, box_h), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.6, out, 0.4, 0, out)
+    cv2.addWeighted(overlay, 0.8, out, 0.4, 0, out)
     for i, line in enumerate(TOGGLE_HELP_LINES):
         y = pad + line_h * i + line_h - 4
         cv2.putText(
@@ -283,15 +295,31 @@ def draw_mode_indicator(frame, mode):
     return out
 
 
+def draw_console_view(lines: list[str], width: int = 900) -> np.ndarray:
+    """Render recent console log lines as a black image for the log overlay window."""
+    line_h, pad, title_h = 20, 8, 28
+    height = max(200, pad * 2 + title_h + line_h * max(1, len(lines)))
+    img = np.zeros((height, width, 3), dtype=np.uint8)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(img, "Console log  (press L to hide)", (pad, pad + 14), font, 0.45, (80, 220, 80), 1, cv2.LINE_AA)
+    for i, line in enumerate(lines):
+        y = pad + title_h + (i + 1) * line_h
+        cv2.putText(img, line[:110], (pad, y), font, 0.4, (200, 200, 200), 1, cv2.LINE_AA)
+    return img
+
+
 def validate_with_model(model, warped, tracker):
     """Run the YOLO model once and compare its read to the tracked position.
 
     The re-sync fallback for diff mode: when a change can't be explained or you
     suspect the tracker has drifted, this surfaces where the model disagrees so
     you can correct the board (the diff path never identifies pieces itself)."""
-    results = model(warped, verbose=False, conf=settings.pieces_conf_threshold)[0]
+    pad = settings.warp_padding
+    h_w, w_w = warped.shape[:2]
+    board_crop = warped[pad:h_w - pad, pad:w_w - pad] if pad else warped
+    results = model(board_crop, verbose=False, conf=settings.pieces_conf_threshold)[0]
     board = detections_to_board(
-        results, warped.shape[1], warped.shape[0], padding=settings.warp_padding
+        results, board_crop.shape[1], board_crop.shape[0], padding=0
     )
     if tracker is None:
         seen = ", ".join(f"{sq}:{label}" for sq, (label, _) in sorted(board.items()))
@@ -339,6 +367,30 @@ def start_recording(start_fen=None):
     return tracker
 
 
+class _ConsoleLog:
+    """Tee stdout to both the terminal and a ring buffer for the console overlay."""
+
+    def __init__(self, maxlines: int = 40):
+        self._lines: deque[str] = deque(maxlen=maxlines)
+        self._stdout = sys.stdout
+
+    def write(self, text: str) -> None:
+        self._stdout.write(text)
+        for line in text.splitlines():
+            if line.strip():
+                self._lines.append(line)
+
+    def flush(self) -> None:
+        self._stdout.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stdout, name)
+
+    @property
+    def lines(self) -> list[str]:
+        return list(self._lines)
+
+
 def _check_display():
     import os
     import sys
@@ -364,8 +416,17 @@ def _check_display():
     print(f"[display] DISPLAY={display!r}  OpenCV GUI: {gui_status}")
 
 
-def main(start_fen=None, detection_mode=None):
-    _check_display()
+def main(start_fen=None, detection_mode=None, web_port: int | None = None):
+    console_log = _ConsoleLog()
+    sys.stdout = console_log
+
+    web_mode = web_port is not None
+    if web_mode:
+        from chessvision.app import web_stream as _ws
+        _ws.start(port=web_port)
+    else:
+        _ws = None
+        _check_display()
     print("\n".join(TOGGLE_HELP_LINES))
     detection_mode = detection_mode or settings.detection_mode
     print(f"[init] detection mode: {detection_mode}")
@@ -397,6 +458,7 @@ def main(start_fen=None, detection_mode=None):
     show_detections = settings.show_detections
     show_corners = False
     show_help = False
+    show_log = False
     print_board = False
     flip = settings.flip_orientation
     snapshot_count = 0
@@ -406,6 +468,7 @@ def main(start_fen=None, detection_mode=None):
     locked_quad = None  # cached board quad once calibrated, else detect per frame
     reference_warped = None  # diff mode: warped board as of the last committed move
     undo_pending = False  # True after first 'u' press, waiting for confirmation
+    illegal_restore_frames = 0  # consecutive clear frames since illegal_flag was set
 
     while True:
         ret, frame = cap.read()
@@ -481,21 +544,42 @@ def main(start_fen=None, detection_mode=None):
                 if tracker is not None and not noisy:
                     if tracker.update_changed(changed_names):
                         reference_warped = warped.copy()  # re-anchor to new position
+
+                # Auto-clear the illegal flag when the piece is moved back.
+                # Once changed_cells is empty for stability_frames consecutive
+                # non-noisy frames the board matches the reference again, so we
+                # reset the debounce and re-anchor without requiring manual 'a'.
+                if tracker is not None and tracker.illegal_flag and not noisy and not changed_cells:
+                    illegal_restore_frames += 1
+                    if illegal_restore_frames >= settings.game_stability_frames:
+                        tracker.reset_debounce()
+                        reference_warped = warped.copy()
+                        print("[rec] piece restored to original square — illegal move cleared")
+                        illegal_restore_frames = 0
+                else:
+                    illegal_restore_frames = 0
             else:
+                pad = settings.warp_padding
+                h_w, w_w = warped.shape[:2]
+                # Crop to the board interior so YOLO never runs on the padding
+                # margin; detections outside the grid can't appear at all.
+                board_crop = warped[pad:h_w - pad, pad:w_w - pad] if pad else warped
                 results = model(
-                    warped, verbose=False, conf=settings.pieces_conf_threshold
+                    board_crop, verbose=False, conf=settings.pieces_conf_threshold
                 )[0]
 
                 if show_detections:
-                    view = results.plot(font_size=4, line_width=1)
+                    annotated = results.plot(font_size=4, line_width=1)
+                    view = warped.copy()
+                    view[pad:pad + annotated.shape[0], pad:pad + annotated.shape[1]] = annotated
                 else:
                     view = warped
 
                 board = detections_to_board(
                     results,
-                    warped.shape[1],
-                    warped.shape[0],
-                    padding=settings.warp_padding,
+                    board_crop.shape[1],
+                    board_crop.shape[0],
+                    padding=0,
                 )
                 if print_board and board:
                     occupied = ", ".join(
@@ -505,6 +589,9 @@ def main(start_fen=None, detection_mode=None):
 
                 if tracker is not None:
                     tracker.update(board)
+
+        else:
+            illegal_restore_frames = 0
 
         # The corner/quad overlay always belongs on the raw frame (matching
         # detect_corners_cv.py). corners is None when the transform is locked, so
@@ -530,17 +617,21 @@ def main(start_fen=None, detection_mode=None):
         if show_help:
             view = draw_help_overlay(view)
 
-        try:
-            cv2.imshow(
-                "Chess piece detection", scale_for_display(view, settings.display_size)
-            )
-        except Exception as e:
-            print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
-            break
-
-        key = cv2.waitKey(1) & 0xFF
-        if frame_count == 1:
-            print(f"[loop] waitKey returned {key}", flush=True)
+        scaled = scale_for_display(view, settings.display_size)
+        if web_mode:
+            _ws.push_frame(scaled)
+            time.sleep(1 / 30)
+            cmd = _ws.pop_command()
+            key = ord(cmd[0]) if cmd else 0xFF
+        else:
+            try:
+                cv2.imshow("Chess piece detection", scaled)
+            except Exception as e:
+                print(f"[display] imshow failed: {type(e).__name__}: {e}", flush=True)
+                break
+            if show_log:
+                cv2.imshow("Console log", draw_console_view(console_log.lines))
+            key = cv2.waitKey(1) & 0xFF
         if undo_pending and key != 0xFF and key != ord("u"):
             undo_pending = False
             print("[rec] undo cancelled")
@@ -575,6 +666,11 @@ def main(start_fen=None, detection_mode=None):
             else:
                 locked_quad = None
                 print("[calib] board transform unlocked — detecting per frame again.")
+        elif key == ord("l"):
+            show_log = not show_log
+            print(f"[toggle] console log window: {'on' if show_log else 'off'}")
+            if not show_log and not web_mode:
+                cv2.destroyWindow("Console log")
         elif key == ord("p"):
             print_board = not print_board
             print(f"[toggle] print board state: {'on' if print_board else 'off'}")
@@ -646,7 +742,8 @@ def main(start_fen=None, detection_mode=None):
             snapshot_count += 1
 
     cap.release()
-    cv2.destroyAllWindows()
+    if not web_mode:
+        cv2.destroyAllWindows()
 
 
 def parse_args():
@@ -670,6 +767,18 @@ def parse_args():
         "the move from the rules; needs a known start and a locked board). "
         "Defaults to settings.detection_mode. Toggle at runtime with 'm'.",
     )
+    parser.add_argument(
+        "--web",
+        metavar="PORT",
+        type=int,
+        nargs="?",
+        const=8080,
+        default=None,
+        help="Serve the board view as an MJPEG stream instead of opening an "
+        "OpenCV window. Opens an HTTP server on PORT (default 8080) with a "
+        "live stream at /stream and control buttons at /. Useful in Docker "
+        "or SSH sessions where X11 is unavailable.",
+    )
     return parser.parse_args()
 
 
@@ -683,7 +792,7 @@ def cli():
         except ValueError as e:
             print(f"ERROR: invalid --from-fen: {e}", file=sys.stderr)
             raise SystemExit(2) from None
-    main(start_fen, detection_mode=args.detect)
+    main(start_fen, detection_mode=args.detect, web_port=args.web)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
-description: Ultralytics YOLO26n model trained on datasets/chess-pieces/data.yaml
+description: Ultralytics YOLO26n model trained on datasets/combined/data.yaml
 author: Ultralytics
-date: '2026-06-17T14:10:40.257168'
+date: '2026-06-19T12:11:12.606646'
 version: 8.4.67
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com

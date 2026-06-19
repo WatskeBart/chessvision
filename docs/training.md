@@ -52,9 +52,26 @@ uv run gm-autolabel --fen "<placement>" --src warped/ --warped
 ## Training (`gm-train`)
 
 [`chessvision/training/train.py`](../chessvision/training/train.py) fine-tunes a
-YOLO checkpoint on the chess-pieces dataset, validates on the val split, and saves
-the best weights under `models/`. Point it at your captured dataset and the
-existing weights:
+YOLO checkpoint on a chess-pieces dataset, validates on the val split, and saves
+the best weights under `models/`.
+
+### Datasets
+
+| Dataset | Path | Source |
+| --- | --- | --- |
+| `chess-pieces` | `datasets/chess-pieces/` | External dataset (Roboflow, CC BY 4.0) — diverse generic chess sets |
+| `my-pieces` | `datasets/my-pieces/` | Captured with `gm-capture` — your own physical pieces |
+| `combined` | `datasets/combined/` | Merges both of the above; **this is the default** |
+
+The combined dataset (`datasets/combined/data.yaml`) points at both `chess-pieces`
+and `my-pieces` image directories, giving the model breadth from the external data
+and accuracy on your specific pieces. Train on it directly:
+
+```bash
+uv run gm-train   # uses datasets/combined/data.yaml by default
+```
+
+To train on only your own pieces (e.g. to iterate quickly after fresh captures):
 
 ```bash
 GRANDMASTER_TRAIN_DATA_YAML=datasets/my-pieces/data.yaml \

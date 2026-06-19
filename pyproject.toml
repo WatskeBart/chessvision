@@ -8,6 +8,7 @@ dependencies = [
     "onnx>=1.22.0",
     "onnxruntime>=1.26.0",
     "opencv-python>=4.13.0.92",
+    "pnnx>=20260526",
     "pydantic-settings>=2.14.1",
     "ultralytics>=8.4.67",
 ]
@@ -33,6 +34,16 @@ packages = ["chessvision"]
 dev = [
     "ipykernel>=7.3.0",
     "ruff>=0.14.0",
+    "zensical>=0.0.45",
+]
+
+# Limit dependency resolution to the platforms this project actually targets.
+# Without this uv tries to solve for Windows too, which breaks packages that
+# only publish Linux/macOS wheels (e.g. zensical).
+[tool.uv]
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
 ]
 
 [[tool.uv.index]]

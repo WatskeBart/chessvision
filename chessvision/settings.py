@@ -25,13 +25,13 @@ class Settings(BaseSettings):
 
     # Base checkpoint to fine-tune from in train_pieces.py. yolo26n.pt is the
     # COCO-pretrained nano model - much faster to converge than from scratch.
-    train_model_path: Path = Path("models/yolo26n.pt")
+    train_model_path: Path = Path("models/pieces.pt")
 
     # data.yaml that came with the chess-pieces dataset (YOLO format).
-    train_data_yaml: Path = Path("datasets/chess-pieces/data.yaml")
+    train_data_yaml: Path = Path("datasets/combined/data.yaml")
 
     # Training hyperparameters for train_pieces.py.
-    train_epochs: int = 100
+    train_epochs: int = 40
     train_imgsz: int = 640
     train_patience: int = 20  # stop early if val performance plateaus
     # GPU index (e.g. 0) if you have an NVIDIA/CUDA GPU, or "cpu" to train on CPU.
@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     # piece leaving a light square (e.g. a pawn's source square on h2->h3) didn't
     # register, so the 2-square move showed only its destination and matched no
     # legal move. 8 stays ~4x above the noise floor.
-    diff_change_threshold: float = 8.0
+    diff_change_threshold: float = 10.0
 
     # Central fraction of each square sampled for change (avoids grid lines and
     # tall neighbouring pieces leaning over the boundary).
