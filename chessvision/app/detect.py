@@ -434,7 +434,7 @@ def main(start_fen=None, detection_mode=None, web_port: int | None = None):
     web_mode = web_port is not None
     if web_mode:
         from chessvision.app import web_stream as _ws
-        _ws.start(port=web_port)
+        _ws.start(port=web_port, games_dir=settings.games_dir)
     else:
         _ws = None
         _check_display()
