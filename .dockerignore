@@ -1,0 +1,22 @@
+.git/
+.venv/
+.ruff_cache/
+.claude/
+
+# Large binary artefacts — mount these at runtime instead
+models/
+datasets/
+runs/
+
+# Recorded games — mount at runtime
+games/
+
+# Dev-only files
+jupyter_notebooks/
+samples/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+.env

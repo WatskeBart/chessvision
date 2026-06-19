@@ -1,17 +1,5 @@
-path: /home/watskebart/Projects/chessvision/datasets/my-pieces
 train: train/images
 val: valid/images
+
 nc: 12
-names:
-  - black-bishop
-  - black-king
-  - black-knight
-  - black-pawn
-  - black-queen
-  - black-rook
-  - white-bishop
-  - white-king
-  - white-knight
-  - white-pawn
-  - white-queen
-  - white-rook
+names: ['black-bishop', 'black-king', 'black-knight', 'black-pawn', 'black-queen', 'black-rook', 'white-bishop', 'white-king', 'white-knight', 'white-pawn', 'white-queen', 'white-rook']
