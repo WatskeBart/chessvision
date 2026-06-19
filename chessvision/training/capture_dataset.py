@@ -385,6 +385,17 @@ def parse_args():
         action="store_true",
         help="Do not add grid-cell boxes for known pieces the model missed.",
     )
+    p.add_argument(
+        "--piece",
+        metavar="CLASS",
+        default=None,
+        help=(
+            "Single-piece mode: place one piece on the board and press SPACE on each "
+            "square — no FEN or move commands needed. The model supplies the bounding "
+            "box geometry; the class is overridden with this value. Synthesis is "
+            "disabled automatically. Valid values: " + ", ".join(CLASS_NAMES)
+        ),
+    )
     p.add_argument("--viz", action="store_true", help="Also save annotated viz images.")
     p.add_argument(
         "--infer-every",
@@ -400,9 +411,20 @@ def main():
     args = parse_args()
     from ultralytics import YOLO
 
-    board = _board_from_fen(args.fen)
-    gt = _gt_from_board(board)
-    print(f"[init] ground-truth: {len(gt)} pieces from FEN")
+    single_piece = args.piece
+    if single_piece:
+        if single_piece not in CLASS_ID:
+            raise SystemExit(
+                f"ERROR: '{single_piece}' is not a valid class name.\n"
+                f"Valid: {', '.join(CLASS_NAMES)}"
+            )
+        board = None
+        gt = {}  # set dynamically per frame from the best detection
+        print(f"[init] single-piece mode: '{single_piece}' — move it around and press SPACE")
+    else:
+        board = _board_from_fen(args.fen)
+        gt = _gt_from_board(board)
+        print(f"[init] ground-truth: {len(gt)} pieces from FEN")
 
     if not args.model.exists():
         raise SystemExit(f"ERROR: model not found: {args.model.resolve()}")
@@ -422,6 +444,7 @@ def main():
     flip = settings.flip_orientation
     rotation = 0
     synthesize = not args.no_synthesize
+    locked_quad = None
     session = time.strftime("%Y%m%d_%H%M%S")
     captured = 0
     frame_idx = 0
@@ -432,9 +455,14 @@ def main():
         None,
     )
 
-    print(
-        "\nKeys: [space/s] capture  [e] new FEN  [v] paste FEN  [m] move  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n"
-    )
+    if single_piece:
+        print(
+            "\nKeys: [space/s] capture  [k] lock board  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n"
+        )
+    else:
+        print(
+            "\nKeys: [space/s] capture  [k] lock board  [e] new FEN  [v] paste FEN  [m] move  [f] flip  [r] rotate  [n] skip  [ESC/q] quit\n"
+        )
 
     while True:
         ret, frame = cap.read()
@@ -444,19 +472,24 @@ def main():
             cap = cv2.VideoCapture(url)
             continue
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners = find_corners(gray)
+        if locked_quad is not None:
+            quad = locked_quad
+        else:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            corners = find_corners(gray)
+            quad = board_quad_from_corners(corners) if corners is not None else None
 
-        if corners is None:
+        if quad is None:
             view = frame.copy()
             cv2.putText(
                 view,
-                "no board detected",
+                "no board detected — press K when board is fully visible",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.6,
                 (0, 0, 255),
                 2,
+                cv2.LINE_AA,
             )
             cv2.imshow(
                 "Capture dataset", scale_for_display(view, settings.display_size)
@@ -465,31 +498,48 @@ def main():
                 break
             continue
 
-        quad = board_quad_from_corners(corners)
         try:
             warped = warp_board(frame, quad, padding=settings.warp_padding)
         except cv2.error:
             continue
 
-        bh, bw = warped.shape[:2]
+        pad = settings.warp_padding
+        h_w, w_w = warped.shape[:2]
+        board_crop = warped[pad:h_w - pad, pad:w_w - pad] if pad else warped
+        bh, bw = board_crop.shape[:2]
         if frame_idx % args.infer_every == 0:
-            result = model(warped, verbose=False, conf=args.propose_conf)[0]
+            result = model(board_crop, verbose=False, conf=args.propose_conf)[0]
+            if single_piece:
+                # Auto-detect the occupied square from the best box; override class.
+                gt = {}
+                if result.boxes:
+                    bb = max(result.boxes, key=lambda b: float(b.conf[0]))
+                    x1, y1, x2, y2 = bb.xyxy[0].tolist()
+                    sq = assign_square(x1, y1, x2, y2, bw, bh, 0, flip, rotation)
+                    gt = {sq: single_piece}
             labels, stats = build_labels(
-                result, gt, bw, bh, settings.warp_padding, flip, synthesize, rotation
+                result, gt, bw, bh, 0, flip,
+                synthesize and not single_piece, rotation
             )
-            viz = draw_overlay(warped, labels, rotation)
+            viz = draw_overlay(board_crop, labels, rotation)
         frame_idx += 1
 
         to_valid = captured % args.val_every == args.val_every - 1
         split = "valid" if to_valid else "train"
         display = cv2.rotate(viz, _CV2_ROTATIONS[rotation]) if rotation else viz
         display = draw_header(display, stats, flip, rotation, split, captured)
+        if locked_quad is not None:
+            cv2.putText(
+                display, "BOARD LOCKED",
+                (display.shape[1] - 210, display.shape[0] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA,
+            )
         cv2.imshow("Capture dataset", scale_for_display(display, settings.display_size))
 
         key = cv2.waitKey(1) & 0xFF
         if key in (27, ord("q")):
             break
-        elif key == ord("e"):
+        elif key == ord("e") and not single_piece:
             new_fen = input("[FEN] Enter new FEN: ").strip()
             if new_fen:
                 try:
@@ -498,7 +548,7 @@ def main():
                     print(f"[FEN] updated — {len(gt)} pieces")
                 except Exception as exc:
                     print(f"[FEN] invalid FEN, keeping previous ({exc})")
-        elif key == ord("v"):
+        elif key == ord("v") and not single_piece:
             text = (_read_clipboard() or "").strip()
             if text:
                 try:
@@ -509,7 +559,7 @@ def main():
                     print(f"[FEN] clipboard text is not a valid FEN ({exc})")
             else:
                 print("[FEN] clipboard is empty or unavailable")
-        elif key == ord("m"):
+        elif key == ord("m") and not single_piece:
             move_str = input("[move] Enter UCI move (e.g. a7a6): ").strip()
             if move_str:
                 try:
@@ -525,6 +575,16 @@ def main():
                     print(f"[move] {move_str} applied — {len(gt)} pieces")
                 except Exception as exc:
                     print(f"[move] invalid move, board unchanged ({exc})")
+        elif key == ord("k"):
+            if locked_quad is None:
+                if quad is not None:
+                    locked_quad = quad.copy()
+                    print("[calib] board transform LOCKED — reusing every frame. Press K to unlock.")
+                else:
+                    print("[calib] cannot lock: no board detected this frame")
+            else:
+                locked_quad = None
+                print("[calib] board transform unlocked — detecting per frame again")
         elif key == ord("f"):
             flip = not flip
             print(
@@ -537,8 +597,11 @@ def main():
         elif key == ord("n"):
             continue
         elif key in (ord(" "), ord("s")):
+            if single_piece and not gt:
+                print("[capture] no piece detected — position the piece and try again")
+                continue
             stem = f"{session}_{captured:04d}"
-            write_capture(args.out, split, stem, warped, labels, args.viz, viz)
+            write_capture(args.out, split, stem, board_crop, labels, args.viz, viz)
             captured += 1
             print(
                 f"[capture {captured}] {split}/{stem}  matched {stats['matched']}/"
