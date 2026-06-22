@@ -91,20 +91,42 @@ class TileExtractor(ITileExtractor):
 
             # Sort the rectangles from left to right, top to bottom
             self.rectangles.sort(key=lambda r: (r[1] // 50, r[0] // 50))
-            self.determine_cells(frame)
+
+        if self.cells is None:
+            if self.determine_cells(frame) is None:
+                self.rectangles = None
 
         return self.cells
     
+
+    def release(self):
+        self.rectangles = None
+    
     def determine_cells(self, frame: cv2.Mat):
         # Extract all rectangles from the warped image to two dimensional list of cells
+
+
+        # sort the rectangles by their y position and x position from low to high to determine the position of the cells in the grid
+        self.rectangles.sort(key=lambda r: (r[1]))
+
         self.cells = [[] for _ in range(8)]
         for (x, y, w, h) in self.rectangles:
-            # Determine the row and column of the cell based on its center position
-            col = int((x + w / 2) // w)
-            row = int((y + h / 2) // h)
-            chess_cell = ChessCell(x, y, w, h)
-            self.cells[col].insert(row, chess_cell)
+            # Fill the cells list with the chess cells based on the position of the rectangles in the grid
+            # Make sure that it will not replace other cells this can happen if the chessboard was not warped correctly and some cells are overlapping each other
+            col = int(x+w/4) // w
+            if col < 0 or col >= 8:
+                continue
+            
+            cell = ChessCell(x, y, w, h)
+            self.cells[col].append(cell)
+            
 
+
+        for index, col in enumerate(self.cells):
+            if len(col) != 8:
+                print(f"Col {index} has not 8 cells")
+                self.cells = None
+                return None
 
         corner_cells = [self.cells[0][0], self.cells[0][7], self.cells[7][0], self.cells[7][7]]
         
@@ -138,11 +160,8 @@ class TileExtractor(ITileExtractor):
                 cell.init(row, col)
                 cell.update(frame)
 
+        return self.cells
 
-
-        if(self.debug):
-            cv2.imshow("A1 Cell", self.cells[0][0].get_cell(frame))
-            cv2.imshow("H8 Cell", self.cells[7][7].get_cell(frame))
         
         
 

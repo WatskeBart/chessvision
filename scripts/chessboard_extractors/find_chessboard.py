@@ -8,14 +8,17 @@ class ChessboardExtractor(IChessboardExtractor):
     output_size = (640, 640)
     padding = 10
     board = None
+    preview = None
 
     def __init__(self):
         IChessboardExtractor.__init__(self)
 
     def extract(self, frame: cv2.Mat):
 
+        self.preview = frame.copy()
 
         if self.board is None:
+
             gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
             blurred = cv2.GaussianBlur(gray, (3, 3), 0)
             ok, corners = cv2.findChessboardCornersSB(blurred, self.board_size, flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE)
@@ -33,6 +36,8 @@ class ChessboardExtractor(IChessboardExtractor):
                 br = pts[-1, -1] + step_right + step_down
                 bl = pts[-1, 0] - step_right + step_down
 
+                cv2.drawChessboardCorners(self.preview, self.board_size, corners, ok)
+
                 self.board = np.array([
                     tl, tr, br, bl
                 ], dtype="float32")
@@ -45,8 +50,19 @@ class ChessboardExtractor(IChessboardExtractor):
                 [self.padding, self.output_size[1] + self.padding - 1]
             ], dtype="float32")
 
+            # Draw rectangle on preview
+            cv2.polylines(self.preview, np.array([self.board], dtype="int32"), True, (255, 0, 0))
+
+            cv2.imshow("Preview", self.preview)
+
             M = cv2.getPerspectiveTransform(self.board, dst)
             return True, cv2.warpPerspective(frame, M, (self.output_size[0] + 2 * self.padding, self.output_size[1] + 2 * self.padding))
+        
+        cv2.imshow("Preview", self.preview)
+        
 
         return False, frame
+    
+    def release(self):
+        self.board = None
         

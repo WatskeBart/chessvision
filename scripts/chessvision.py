@@ -14,13 +14,11 @@ def main():
     extractor: IChessboardExtractor = ChessboardExtractor()
     
     tile_extractor: ITileExtractor = TileExtractor()
-    tile_extractor.debug = True  # Enable debug mode to visualize the tile extraction process
+   # tile_extractor.debug = True  # Enable debug mode to visualize the tile extraction process
 
     # Replace with your stream URL
     stream_url = "http://10.42.0.177:4444/stream"
     cap = cv2.VideoCapture(stream_url)
-    instruction_window = cv2.namedWindow("Instruction")
-
 
     if not cap.isOpened():
         print("Error: Could not open video stream.")
@@ -46,6 +44,9 @@ def main():
 
         if not success:
             print("Chessboard not found in the frame.")
+            # Exit on pressing 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
             continue
 
         # Extract the tiles from the chessboard
@@ -94,7 +95,11 @@ def main():
                         moved.append(cellA.id)
                         moved.append(cellB.id)
                         whiteTurn = not whiteTurn
-
+            elif updatedCellsCount > 0 and len(updatedCells) > 24:
+                extractor.release()
+                tile_extractor.release()
+        else:
+            extractor.release()
 
 
         
