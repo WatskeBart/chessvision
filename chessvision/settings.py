@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # any format Ultralytics can load: a .pt/.onnx file, or an NCNN export, which
     # is a *directory* (models/pieces_ncnn_model/ holding model.ncnn.param +
     # model.ncnn.bin + metadata.yaml).
-    pieces_model_path: Path = Path("models/pieces_ncnn_model")
+    pieces_model_path: Path = Path("models/my-pieces_ncnn_model")
 
     # Base checkpoint to fine-tune from in train_pieces.py. yolo26n.pt is the
     # COCO-pretrained nano model - much faster to converge than from scratch.
