@@ -113,7 +113,7 @@ class TileExtractor(ITileExtractor):
         for (x, y, w, h) in self.rectangles:
             # Fill the cells list with the chess cells based on the position of the rectangles in the grid
             # Make sure that it will not replace other cells this can happen if the chessboard was not warped correctly and some cells are overlapping each other
-            col = int(x+w/4) // w
+            col = int(x+w/2) // w
             if col < 0 or col >= 8:
                 continue
             
